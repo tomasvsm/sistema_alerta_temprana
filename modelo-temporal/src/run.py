@@ -32,7 +32,17 @@ def myConf():
     configuration.save('myConf.cfg')
     return configuration
 
-def main(confFile=None,outputFile=None):
+def _to_slice(seq_or_slice):
+    """El motor C++ expone EGG/LARVAE/etc como un objeto seq(first,size) en vez
+    de un slice de Python -- lo convertimos para poder indexar arrays igual
+    que con el motor Python. Si ya es un slice (motor Python), lo deja igual."""
+    if isinstance(seq_or_slice, slice):
+        return seq_or_slice
+    first, size = seq_or_slice.first(), seq_or_slice.size()
+    return slice(first, first + size)
+
+def main(confFile=None,outputFile=None,engine='cpp'):
+    assert engine in ('cpp','python')
 
     if confFile is not None:
         try:
@@ -40,13 +50,20 @@ def main(confFile=None,outputFile=None):
         except FileNotFoundError:
             print('Configuration file not found')
             configuration = myConf()
+            confFile = 'myConf.cfg'
     else:
         configuration = myConf()
-
-    model = Model(configuration)
+        confFile = 'myConf.cfg'
 
     t1 = time.time()
-    time_range, results = model.solveEquations()
+    if engine == 'cpp':
+        model = _Model(confFile)
+        time_range, results = model.solveEquations()
+        time_range = np.array(time_range)
+        results = np.array(results)
+    else:
+        model = Model(configuration)
+        time_range, results = model.solveEquations()
     t2 = time.time()
     print('Elapsed time: ', t2-t1)
 
@@ -56,13 +73,13 @@ def main(confFile=None,outputFile=None):
     end_datetime = datetime.datetime.strptime(configuration.getString('simulation','end_date'),'%Y-%m-%d')
     dates = [(start_datetime + datetime.timedelta(days=t)) for t in time_range]
 
-    EGG    = model.parameters.EGG
-    LARVAE = model.parameters.LARVAE
-    PUPAE  = model.parameters.PUPAE
+    EGG    = _to_slice(model.parameters.EGG)
+    LARVAE = _to_slice(model.parameters.LARVAE)
+    PUPAE  = _to_slice(model.parameters.PUPAE)
     ADULT1 = model.parameters.ADULT1
     ADULT2 = model.parameters.ADULT2
-    WATER  = model.parameters.WATER
-    OVIPOSITION = model.parameters.OVIPOSITION
+    WATER  = _to_slice(model.parameters.WATER)
+    OVIPOSITION = _to_slice(model.parameters.OVIPOSITION)
     BS_a   = model.parameters.BS_a
 
     E = np.sum(results[:,EGG],axis=1)/BS_a
@@ -73,11 +90,17 @@ def main(confFile=None,outputFile=None):
     lwO_mean = np.array([lwO[indexOf(t-7):indexOf(t+7)].mean(axis=0) for t in time_range])
     O = np.sum(lwO_mean,axis=1)/BS_a
 
-    T = model.parameters.weather.T(time_range) - 273.15 # Convert to Celsius
-    RH = model.parameters.weather.RH(time_range)
+    if engine == 'cpp':
+        # weather.T/RH del motor C++ no estan vectorizadas (toman un float, no un array)
+        T = np.array([model.parameters.weather.T(t) for t in time_range]) - 273.15
+        RH = np.array([model.parameters.weather.RH(t) for t in time_range])
+        location = model.parameters.location  # string, no dict
+    else:
+        T = model.parameters.weather.T(time_range) - 273.15 # Convert to Celsius
+        RH = model.parameters.weather.RH(time_range)
+        location = model.parameters.location['name']
 
     # extract precipitation data from csv file
-    location = model.parameters.location['name']
     location_filename = os.path.join(DATA_PUBLIC,f'{location}.csv')
     P = utils.getPrecipitationsFromCsv(location_filename,start_datetime.date(),end_datetime.date())
     
