@@ -36,8 +36,8 @@ def daterange(start_date, end_date):
 
 def getLocations():
     config_parser = ConfigParser()
-    #config_parser.read('resources/get_weather.cfg')
-    config_parser.read('resources/coordinates_smn.cfg')
+    config_parser.read('resources/get_weather.cfg')
+    #config_parser.read('resources/coordinates_smn.cfg')
     return config_parser.sections()
 
 def getStartEndDates(filename):
@@ -57,7 +57,7 @@ def download_file(url, folder, filename):
         response = urllib.request.urlopen(request)
         if not response.headers['Content-Length']:
             print(f"Content-Length doesn't exists for {filename}")
-            return
+            return False
         total_size = int(response.headers['Content-Length'])
         downloaded_size = 0
         block_size = 8192
@@ -71,9 +71,11 @@ def download_file(url, folder, filename):
                     file.write(buffer)
                     progress_bar.update(len(buffer))
         print("Download complete!")
+        return True
     except Exception as e:
         print(f"Error downloading {filename} from {url}")
         print(e)
+        return False
 ## END UTILS ##
 
 ## IMERG ##
@@ -84,17 +86,35 @@ def getIMERGVersion(a_date):
         return '07'
     else:
         return '07'
-    
+
+# GES DISC va incrementando la letra de version menor (B, C, ...) del run
+# "Late" sin re-procesar fechas viejas, asi que no hay forma de saber de
+# antemano cual le corresponde a una fecha dada: se prueban en orden hasta
+# que una exista (confirmado 2026-08-19: enero/2025 = V07B, junio/2026 = V07C).
+#
+# OJO A FUTURO: GES DISC tiene un alert activo (19/05/2026) de transicion de
+# IMERG a V08. A la fecha de este comentario "GPM_3IMERGDL.08" (Late, diario,
+# la coleccion que usamos) todavia NO existe -- pero si en algun momento deja
+# de encontrar archivos con estos sufijos, revisar si ya migro. Ahi habria que
+# cambiar tambien el major version en getIMERGVersion(), no solo la letra.
+IMERG_MINOR_VERSIONS = ['C', 'B']
+
 #TODO: take into account the utc time. ?
 
-def getFilenameForIMERG(a_date):
-    version = getIMERGVersion(a_date)
-    if version == '07':
-        version += 'B'
+def getFilenameForIMERG(a_date, minor_version):
+    version = getIMERGVersion(a_date) + minor_version
     year = a_date.year
     month = a_date.month
     day = a_date.day
     return f'3B-DAY-L.MS.MRG.3IMERG.{year}{month:02d}{day:02d}-S000000-E235959.V{version}.nc4'
+
+def findLocalIMERGFilename(folder, a_date):
+    """Nombre del archivo ya descargado para esta fecha, probando las versiones conocidas. None si no hay ninguno."""
+    for mv in IMERG_MINOR_VERSIONS:
+        filename = getFilenameForIMERG(a_date, mv)
+        if path.isfile(folder + filename):
+            return filename
+    return None
 
 #https://wiki.earthdata.nasa.gov/display/EL/How+To+Access+Data+With+Python
 def downloadDataFromIMERG(start_date,end_date,folder):
@@ -105,25 +125,36 @@ def downloadDataFromIMERG(start_date,end_date,folder):
     opener = urllib.request.build_opener(urllib.request.HTTPBasicAuthHandler(passman),urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     urllib.request.install_opener(opener)
     for a_date in daterange(start_date,end_date):
-        filename = getFilenameForIMERG(a_date)
-        
-        if check_file_exists(folder,filename):
+        if findLocalIMERGFilename(folder, a_date):
+            print(f"{getFilenameForIMERG(a_date, IMERG_MINOR_VERSIONS[0])} (u otra version) already exists")
             continue
 
         year = a_date.year
         month = a_date.month
         version = getIMERGVersion(a_date)
-        url = f'https://gpm1.gesdisc.eosdis.nasa.gov/data/GPM_L3/GPM_3IMERGDL.{version}/{year}/{month:02d}/{filename}'
-        
-        #version 5 is different
-        if(getIMERGVersion(a_date) == '05'): 
-            url = url.replace('data','opendap')+'.nc4?precipitationCal[1040:1280][339:709],precipitationCal_cnt[1040:1280][339:709],lon[1040:1280],lat[339:709]'
 
-        download_file(url, folder, filename)
-        time.sleep(SLEEP)
+        downloaded = False
+        for mv in IMERG_MINOR_VERSIONS:
+            filename = getFilenameForIMERG(a_date, mv)
+            url = f'https://gpm1.gesdisc.eosdis.nasa.gov/data/GPM_L3/GPM_3IMERGDL.{version}/{year}/{month:02d}/{filename}'
+
+            #version 5 is different
+            if(version == '05'):
+                url = url.replace('data','opendap')+'.nc4?precipitationCal[1040:1280][339:709],precipitationCal_cnt[1040:1280][339:709],lon[1040:1280],lat[339:709]'
+
+            if download_file(url, folder, filename):
+                downloaded = True
+                break
+            time.sleep(SLEEP)
+
+        if not downloaded:
+            print(f"No se pudo descargar IMERG para {a_date} con ninguna version conocida {IMERG_MINOR_VERSIONS}")
 
 def extractDailyDataFromIMERG(lat,lon,a_date):
-    nc_filename=IMERG_FOLDER+getFilenameForIMERG(a_date)
+    filename = findLocalIMERGFilename(IMERG_FOLDER, a_date)
+    if filename is None:
+        raise FileNotFoundError(f"No hay archivo IMERG local para {a_date} (versiones probadas: {IMERG_MINOR_VERSIONS})")
+    nc_filename=IMERG_FOLDER+filename
     grp = nc.Dataset(nc_filename)
     lats = grp.variables['lat'][:]
     lons = grp.variables['lon'][:]
@@ -317,8 +348,8 @@ if(__name__ == '__main__'):
     print(f"Range date: {start_date} - {end_date}")
     downloadData(start_date,end_date)
     config_parser = ConfigParser()
-    #config_parser.read('resources/get_weather.cfg')
-    config_parser.read('resources/coordinates_smn.cfg')
+    config_parser.read('resources/get_weather.cfg')
+    #config_parser.read('resources/coordinates_smn.cfg')
     params=[]
     for location in config_parser.sections():
         lat=float(config_parser.get(location,'lat'))
