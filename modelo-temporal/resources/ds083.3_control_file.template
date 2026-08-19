@@ -1,0 +1,8 @@
+dataset=ds083.3
+date={start_date}/to/{end_date}
+param=TMP/T MIN/T MAX/R H/GUST/T CDC
+level=HTGL:2
+nlat=-19
+slat=-56
+wlon=-76
+elon=-52
