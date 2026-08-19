@@ -1,0 +1,17 @@
+# credenciales — nunca subir
+**/passwords.cfg
+
+# datos (operativos, no código — se repueblan con la descarga/pipeline)
+**/data/
+
+# artefactos de compilación
+**/__pycache__/
+*.pyc
+*.so
+
+# salidas de corridas sueltas
+results.csv
+myConf.cfg
+test*.cfg
+test*.csv
+test*.npy
