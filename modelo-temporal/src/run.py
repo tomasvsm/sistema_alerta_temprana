@@ -84,6 +84,7 @@ def main(confFile=None,outputFile=None,engine='cpp'):
 
     E = np.sum(results[:,EGG],axis=1)/BS_a
     L = np.sum(results[:,LARVAE],axis=1)/BS_a
+    Pu = np.sum(results[:,PUPAE],axis=1)/BS_a
     A = (results[:,ADULT1]+results[:,ADULT2])/BS_a
 
     lwO = np.array([results[indexOf(t),OVIPOSITION] - results[indexOf(t-7),OVIPOSITION] for t in time_range])
@@ -104,8 +105,19 @@ def main(confFile=None,outputFile=None,engine='cpp'):
     location_filename = os.path.join(DATA_PUBLIC,f'{location}.csv')
     P = utils.getPrecipitationsFromCsv(location_filename,start_datetime.date(),end_datetime.date())
     
-    # Save results to csv file
-    df = pd.DataFrame({'date':dates,'E':E,'L':L,'A':A,'O':O,'p':P,'T':T,'RH':RH})
+    # Save results to csv file -- nombres de columna consistentes con
+    # validacion/output_modelo/*_modelo.csv (mismo formato, se agrega pupae)
+    df = pd.DataFrame({
+        'date': dates,
+        'egg': E,
+        'larvae': L,
+        'pupae': Pu,
+        'adult1+adult2': A,
+        'oviposition': O,
+        'precipitations': P,
+        'temperature': T,
+        'rh': RH,
+    })
     df.set_index('date',inplace=True)
     if not outputFile:
         outputFile = 'results.csv'

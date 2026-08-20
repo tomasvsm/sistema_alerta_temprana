@@ -3,6 +3,7 @@
 
 # datos (operativos, no código — se repueblan con la descarga/pipeline)
 **/data/
+**/output/
 
 # artefactos de compilación
 **/__pycache__/
