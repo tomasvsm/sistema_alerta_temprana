@@ -113,7 +113,7 @@ def main(confFile=None,outputFile=None,engine='cpp'):
         'larvae': L,
         'pupae': Pu,
         'adult1+adult2': A,
-        'oviposition': O,
+        'tasa_oviposicion': O,
         'precipitations': P,
         'temperature': T,
         'rh': RH,
