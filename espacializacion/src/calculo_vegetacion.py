@@ -70,9 +70,12 @@ DAYS_BACK = 7
 # En una semana de 7 días sobre un ROI puntual raramente hay más de 10-15.
 MAX_PRODUCTS = 20
 
-# Máximo de semanas anteriores a reintentar si la semana pedida falla
-#MAX_WEEK_RETRIES = 4
-MAX_WEEK_RETRIES = 1
+# Máximo de semanas anteriores a reintentar si la semana pedida falla.
+# En un sistema de alerta temprana no puede haber semanas sin dato por
+# nubes -- se retrocede hasta encontrar la ultima semana con cobertura
+# util. 52 es un techo de seguridad (un año), no un valor que se espere
+# alcanzar en la práctica.
+MAX_WEEK_RETRIES = 52
 
 # Categorías SCL consideradas nube o sombra de nube:
 #   3  = Cloud shadows
@@ -189,7 +192,8 @@ def sanitize_name(name):
 # =========================================================
 
 def write_processing_log(paths, run_name, start_date, end_date,
-                         scene_info, daily_results, ndvi_maps, success):
+                         scene_info, daily_results, ndvi_maps, success,
+                         weeks_back=0, requested_start=None, requested_end=None):
     """
     Genera un archivo de log .txt con el resumen del procesamiento
     de una semana: escenas descargadas, porcentaje de nubes del mosaico
@@ -202,11 +206,11 @@ def write_processing_log(paths, run_name, start_date, end_date,
     paths : dict[str, str]
         Estructura de directorios de la corrida.
     run_name : str
-        Nombre identificador de la corrida.
+        Nombre identificador de la corrida (usa la fecha SOLICITADA).
     start_date : str
-        Fecha de inicio de la ventana temporal.
+        Fecha de inicio de la ventana de búsqueda REAL usada.
     end_date : str
-        Fecha de fin de la ventana temporal.
+        Fecha de fin de la ventana de búsqueda REAL usada.
     scene_info : list[dict]
         Lista de escenas detectadas (salida de detect_scenes).
     daily_results : list[dict]
@@ -216,6 +220,11 @@ def write_processing_log(paths, run_name, start_date, end_date,
         Mapas NDVI diarios calculados (vacío si la semana falló).
     success : bool
         True si la semana produjo resultado final.
+    weeks_back : int
+        Cuántas semanas se retrocedió respecto a la solicitada para
+        conseguir cobertura útil. 0 = se usó la semana solicitada.
+    requested_start, requested_end : str
+        Ventana original solicitada (solo relevante si weeks_back > 0).
     """
     log_path = os.path.join(paths["outputs"], f"{run_name}_procesamiento.txt")
 
@@ -224,10 +233,19 @@ def write_processing_log(paths, run_name, start_date, end_date,
     lines.append("  SENTINEL-2 NDVI PIPELINE — LOG DE PROCESAMIENTO")
     lines.append("=" * 60)
     lines.append(f"  Corrida:         {run_name}")
-    lines.append(f"  Ventana:         {start_date} -> {end_date}")
+    lines.append(f"  Ventana buscada: {start_date} -> {end_date}")
     lines.append(f"  Fecha de log:    {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append(f"  Resultado:       {'EXITOSO' if success else 'FALLIDO (nubes)'}")
     lines.append("")
+
+    if weeks_back > 0:
+        lines.append("!" * 60)
+        lines.append("  ATENCION -- DATO DE RESPALDO (semana solicitada sin cobertura util)")
+        lines.append(f"  Semana solicitada:  {requested_start} -> {requested_end}")
+        lines.append(f"  Semanas retrocedidas: {weeks_back}")
+        lines.append(f"  Imagen realmente usada: {start_date} -> {end_date}")
+        lines.append("!" * 60)
+        lines.append("")
 
     lines.append("-" * 60)
     lines.append("  ESCENAS DETECTADAS EN DISCO")
@@ -891,6 +909,15 @@ def process_daily_scenes(scenes_for_date, cloud_categories, discard_threshold, m
 
     print(f"    ✔ Mosaico enmascarado — {cloud_pct:.1f}% píxeles de nubes")
 
+    # --- Limpieza de mapas por tesela ---
+    # Una vez patcheadas en el mosaico diario, las teselas individuales
+    # (SCL/B04/B08 por escena) ya no hacen falta. Sin este borrado se
+    # acumulan sin límite en el mapset (miles por año en produccion).
+    per_tile_maps = ",".join(scl_maps + b04_tiles + b08_tiles)
+    gs.run_command(
+        "g.remove", type="raster", name=per_tile_maps, flags="f", quiet=True
+    )
+
     return {
         "date": date,
         "b04":  b04_masked,
@@ -1150,7 +1177,8 @@ def cleanup_sentinel_raw(sentinel_dir):
 # PROCESAMIENTO DE UNA SEMANA
 # =========================================================
 
-def run_week(localidad, start_date, end_date, roi_path):
+def run_week(localidad, start_date, end_date, roi_path,
+             label_start=None, label_end=None, weeks_back=0):
     """
     Ejecuta el pipeline completo para una ventana temporal dada.
 
@@ -1163,11 +1191,21 @@ def run_week(localidad, start_date, end_date, roi_path):
     localidad : str
         Nombre sanitizado de la localidad (prefijo de salida).
     start_date : str
-        Fecha de inicio en formato 'YYYY-MM-DD'.
+        Fecha de inicio de la ventana de BÚSQUEDA real, formato 'YYYY-MM-DD'.
     end_date : str
-        Fecha de fin en formato 'YYYY-MM-DD'.
+        Fecha de fin de la ventana de búsqueda real, formato 'YYYY-MM-DD'.
     roi_path : str
         Ruta al GPKG del ROI.
+    label_start, label_end : str, optional
+        Ventana ORIGINALMENTE solicitada -- se usa para nombrar la carpeta
+        y los archivos de salida, para que calculo_mcda.py siga
+        encontrandolos por la fecha que en realidad le corresponde a la
+        semana operativa, aunque la imagen sea de una semana anterior.
+        Si no se pasan, se usan start_date/end_date (sin reintento).
+    weeks_back : int
+        Cuántas semanas se retrocedió respecto a lo solicitado (0 = la
+        semana pedida tenía cobertura útil directamente). Solo afecta
+        el cartel de aviso en el log.
 
     Returns
     -------
@@ -1175,12 +1213,18 @@ def run_week(localidad, start_date, end_date, roi_path):
         True si se generaron salidas exitosamente, False si todas las
         fechas fueron descartadas por nubes o no se encontraron escenas.
     """
-    run_name = f"{localidad}_{start_date}_{end_date}_vegetacion"
+    label_start = label_start or start_date
+    label_end   = label_end or end_date
+    run_name = f"{localidad}_{label_start}_{label_end}_vegetacion"
     run_base = os.path.join(OUTPUT_BASE, run_name)
     paths    = ensure_dirs(run_base)
 
     print(f"\n{'='*55}")
-    print(f"  Procesando semana: {start_date} -> {end_date}")
+    if weeks_back > 0:
+        print(f"  Procesando semana SOLICITADA {label_start} -> {label_end}")
+        print(f"  (retroceso de {weeks_back} semana/s -- buscando en {start_date} -> {end_date})")
+    else:
+        print(f"  Procesando semana: {start_date} -> {end_date}")
     print(f"  Carpeta: {run_base}")
     print(f"{'='*55}")
 
@@ -1199,7 +1243,8 @@ def run_week(localidad, start_date, end_date, roi_path):
         print("  [SKIP] No se detectaron escenas válidas en disco.")
         write_processing_log(paths, run_name, start_date, end_date,
                              scene_info=[], daily_results=[],
-                             ndvi_maps=[], success=False)
+                             ndvi_maps=[], success=False,
+                             weeks_back=weeks_back, requested_start=label_start, requested_end=label_end)
         cleanup_sentinel_raw(paths["sentinel_raw"])
         return False
 
@@ -1222,7 +1267,8 @@ def run_week(localidad, start_date, end_date, roi_path):
         print("  [SKIP] Todos los días descartados por cobertura de nubes.")
         write_processing_log(paths, run_name, start_date, end_date,
                              scene_info=scene_info, daily_results=daily_results,
-                             ndvi_maps=[], success=False)
+                             ndvi_maps=[], success=False,
+                             weeks_back=weeks_back, requested_start=label_start, requested_end=label_end)
         cleanup_sentinel_raw(paths["sentinel_raw"])
         # Renombrar carpeta para distinguirla visualmente de corridas exitosas
         run_base_cloud = run_base + "_cloud"
@@ -1237,7 +1283,8 @@ def run_week(localidad, start_date, end_date, roi_path):
         print("  [SKIP] No se calcularon mapas NDVI.")
         write_processing_log(paths, run_name, start_date, end_date,
                              scene_info=scene_info, daily_results=daily_results,
-                             ndvi_maps=[], success=False)
+                             ndvi_maps=[], success=False,
+                             weeks_back=weeks_back, requested_start=label_start, requested_end=label_end)
         cleanup_sentinel_raw(paths["sentinel_raw"])
         return False
 
@@ -1268,7 +1315,8 @@ def run_week(localidad, start_date, end_date, roi_path):
     # --- Log y limpieza ---
     write_processing_log(paths, run_name, start_date, end_date,
                          scene_info=scene_info, daily_results=daily_results,
-                         ndvi_maps=ndvi_maps, success=True)
+                         ndvi_maps=ndvi_maps, success=True,
+                         weeks_back=weeks_back, requested_start=label_start, requested_end=label_end)
     cleanup_sentinel_raw(paths["sentinel_raw"])
 
     return True
@@ -1328,28 +1376,41 @@ def main():
     print("  Región guardada como 'roi_region'")
 
     # --- Loop de reintentos semanales ---
+    # label_start/label_end (la semana pedida) se mantienen fijos para
+    # nombrar la salida -- lo que cambia entre intentos es la ventana de
+    # BUSQUEDA (current_start/current_end), que retrocede hasta encontrar
+    # cobertura util. calculo_mcda.py sigue encontrando el resultado por
+    # la fecha operativa correcta, sin importar de qué semana vino la imagen.
+    label_start, label_end = start_date, end_date
     failed_weeks  = []
     success_week  = None
+    success_weeks_back = None
     current_start = datetime.strptime(start_date, "%Y-%m-%d")
     current_end   = datetime.strptime(end_date,   "%Y-%m-%d")
 
     for attempt in range(1, MAX_WEEK_RETRIES + 1):
         s = current_start.strftime("%Y-%m-%d")
         e = current_end.strftime("%Y-%m-%d")
+        weeks_back = attempt - 1
 
         if attempt > 1:
-            print(f"\n  Reintentando con semana anterior: {s} -> {e}  "
-                  f"(intento {attempt}/{MAX_WEEK_RETRIES})")
+            print(f"\n  Sin cobertura util en la semana solicitada -- "
+                  f"retrocediendo a {s} -> {e}  "
+                  f"(semana -{weeks_back}, intento {attempt}/{MAX_WEEK_RETRIES})")
 
         success = run_week(
             localidad=localidad,
             start_date=s,
             end_date=e,
             roi_path=roi_path,
+            label_start=label_start,
+            label_end=label_end,
+            weeks_back=weeks_back,
         )
 
         if success:
             success_week = (s, e)
+            success_weeks_back = weeks_back
             break
         else:
             failed_weeks.append((s, e))
@@ -1370,11 +1431,13 @@ def main():
 
     if success_week:
         s, e = success_week
-        run_name  = f"{localidad}_{s}_{e}_vegetacion"
+        run_name  = f"{localidad}_{label_start}_{label_end}_vegetacion"
         final_dir = os.path.join(OUTPUT_BASE, run_name, "outputs", "final")
         log_path  = os.path.join(OUTPUT_BASE, run_name, "outputs",
                                  f"{run_name}_procesamiento.txt")
-        print(f"\n  ✔ Resultado generado para: {s} -> {e}")
+        print(f"\n  ✔ Resultado generado para la semana solicitada: {label_start} -> {label_end}")
+        if success_weeks_back > 0:
+            print(f"     ATENCIÓN: usó imagen de {success_weeks_back} semana/s atrás ({s} -> {e})")
         print(f"     GeoTIFF: {final_dir}")
         print(f"     Log:     {log_path}")
     else:
