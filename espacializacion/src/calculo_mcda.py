@@ -43,11 +43,22 @@ VEG_BASE_DIR = "data/vegetacion"
 EST_BASE_DIR = "estaticas"
 OUTPUT_DIR   = "output/MCDA"
 
-# Coeficientes MCDA — deben sumar 1.0
-W_VEG   = 0.550
-W_POB   = 0.240
-W_NBI   = 0.095
-W_BUILD = 0.095
+# Coeficientes MCDA (AHP) — deben sumar 1.0. Los valores redondeados a 3
+# decimales (0.550/0.240/0.095/0.095) sumaban 0.980 -- se corrige con un
+# decimal mas de precision del analisis AHP (suman 1.0001, residuo despreciable).
+W_VEG   = 0.5596
+W_POB   = 0.2495
+W_NBI   = 0.0955
+W_BUILD = 0.0955
+
+# Las carpetas de vegetacion se nombran por localidad (calculo_vegetacion.py),
+# no por gid -- ej: villa_maria_2025-07-08_2025-07-15_vegetacion.
+GID_TO_NOMBRE = {
+    "1252": "villa_maria",
+    "1271": "salsipuedes",
+    "1300": "rio_cuarto",
+    "1385": "cordoba",
+}
 
 
 # =========================================================
@@ -71,8 +82,12 @@ def get_veg_folders(gid):
     if not os.path.isdir(VEG_BASE_DIR):
         raise FileNotFoundError(f"No se encontró el directorio: {VEG_BASE_DIR}")
 
+    nombre = GID_TO_NOMBRE.get(gid)
+    if nombre is None:
+        raise ValueError(f"gid desconocido: {gid} (agregar a GID_TO_NOMBRE)")
+
     pattern = re.compile(
-        rf"^{re.escape(gid)}_(\d{{4}}-\d{{2}}-\d{{2}})_(\d{{4}}-\d{{2}}-\d{{2}})_vegetacion$"
+        rf"^{re.escape(nombre)}_(\d{{4}}-\d{{2}}-\d{{2}})_(\d{{4}}-\d{{2}}-\d{{2}})_vegetacion$"
     )
 
     folders = []
