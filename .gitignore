@@ -17,3 +17,6 @@ test*.cfg
 test*.csv
 test*.npy
 **/logs/
+espacializacion/scripts/veg_backfill_logs/
+espacializacion/scripts/veg_backfill_master.log
+espacializacion/scripts/veg_backfill_pid.txt

@@ -74,7 +74,7 @@ def  getMinMaxTemperaturesFromCsv(filename,start_date,end_date):#in Kelvin
     return time_domain,[min_temperatures[int(d)] if d%1.==0. else max_temperatures[int(d)] for d in time_domain]
 
 def  getPrecipitationsFromCsv(filename,start_date,end_date):#in mm
-    return [x if not x<0 else None for x in getValuesFromCsv(filename,start_date,end_date,4)]
+    return [x if (x is not None and not x<0) else None for x in getValuesFromCsv(filename,start_date,end_date,4)]
 
 def  getRelativeHumidityFromCsv(filename,start_date,end_date):#in percentage
     return [x if x else None for x in getValuesFromCsv(filename,start_date,end_date,5)]

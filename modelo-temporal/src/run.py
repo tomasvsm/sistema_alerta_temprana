@@ -104,7 +104,16 @@ def main(confFile=None,outputFile=None,engine='cpp'):
     # extract precipitation data from csv file
     location_filename = os.path.join(DATA_PUBLIC,f'{location}.csv')
     P = utils.getPrecipitationsFromCsv(location_filename,start_datetime.date(),end_datetime.date())
-    
+    # P se pide por rango de fechas calendario, pero `dates` sale del propio
+    # time_range del motor -- pueden divergir en largo cuando hay dias sin
+    # dato de precipitacion en el CSV (el motor C++ parece saltear esos
+    # pasos internamente). Se alinea a la fuerza al largo de `dates`, que es
+    # la salida real de la simulacion.
+    if len(P) > len(dates):
+        P = P[:len(dates)]
+    elif len(P) < len(dates):
+        P = P + [None] * (len(dates) - len(P))
+
     # Save results to csv file -- nombres de columna consistentes con
     # validacion/output_modelo/*_modelo.csv (mismo formato, se agrega pupae)
     df = pd.DataFrame({
