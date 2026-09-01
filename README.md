@@ -18,8 +18,8 @@ volumen compartido (sin llamadas directas entre contenedores).
 | `vegetacion` | ✅ Dockerfile listo | descarga Sentinel-2, calcula NDVI semanal categorizado |
 | `geoprocesos` | ✅ Dockerfile listo | MCDA (idoneidad) + índice de actividad final |
 | `capas-estaticas` | ⏳ pendiente | población/NBI/construcciones (datasets externos grandes, no versionados) |
-| `orquestador` | ⏳ pendiente | corrida semanal automática (cron) |
-| `dashboard` | ⏳ pendiente | visualización |
+| `orquestador` | ✅ Instalado y corriendo (cron martes) | corrida semanal automática |
+| `dashboard` | ✅ Dockerfile listo | visualización (Streamlit) |
 
 Credenciales (IMERG, GDAS/GDEX, Copernicus/EODAG) van en
 `*/resources/passwords.cfg`, gitignoreado — pedir las claves aparte, no están
@@ -228,11 +228,25 @@ Salida: `output/indice_actividad/{fecha}_{gid}_indice_actividad.tif` +
 
 ---
 
+## orquestador
+
+Automatización semanal (cron, martes) que encadena clima → modelo temporal
+→ vegetación → MCDA → índice de actividad. Ver `orquestador/README.md` para
+el detalle completo (cómo correrlo a mano, cómo está anclado el corte
+semanal al martes, formato del estado consolidado).
+
+## dashboard
+
+Visualización (Streamlit + Leaflet). Ver `dashboard/README.md` para build y
+run. Servicio persistente aparte, no forma parte de la corrida semanal.
+
+```bash
+cd dashboard
+docker build -t dashboard:test -f Dockerfile .
+```
+
+---
+
 ## Pendiente
 
-- `orquestador`: cron semanal — separar en dos entradas explícitas, una de
-  backfill (rango de fechas, para poblar desde cero o agregar localidades)
-  y otra operativa (sin argumentos, corre "esta semana" contra todos los
-  servicios).
-- `dashboard`.
 - `capas-estaticas` containerizado (hoy corre en host).
