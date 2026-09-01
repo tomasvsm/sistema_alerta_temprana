@@ -57,7 +57,7 @@ import grass.script as gs
 
 
 # =========================================================
-# PARÁMETROS INTERNOS — editar acá para cambiar comportamiento
+# PARÁMETROS INTERNOS: editar acá para cambiar comportamiento
 # =========================================================
 
 # Directorio raíz donde se crean las carpetas de cada corrida
@@ -230,7 +230,7 @@ def write_processing_log(paths, run_name, start_date, end_date,
 
     lines = []
     lines.append("=" * 60)
-    lines.append("  SENTINEL-2 NDVI PIPELINE — LOG DE PROCESAMIENTO")
+    lines.append("  SENTINEL-2 NDVI PIPELINE: LOG DE PROCESAMIENTO")
     lines.append("=" * 60)
     lines.append(f"  Corrida:         {run_name}")
     lines.append(f"  Ventana buscada: {start_date} -> {end_date}")
@@ -287,7 +287,7 @@ def write_processing_log(paths, run_name, start_date, end_date,
         for m in ndvi_maps:
             lines.append(f"  {m}")
     else:
-        lines.append("  (ninguno — semana fallida)")
+        lines.append("  (ninguno: semana fallida)")
     lines.append("")
 
     lines.append("-" * 60)
@@ -299,7 +299,7 @@ def write_processing_log(paths, run_name, start_date, end_date,
             for f in sorted(os.listdir(folder)):
                 lines.append(f"  {os.path.join(folder, f)}")
     else:
-        lines.append("  (ninguno — semana fallida)")
+        lines.append("  (ninguno: semana fallida)")
     lines.append("")
 
     lines.append("-" * 60)
@@ -636,7 +636,7 @@ def detect_scenes(base_dir):
 
 
 # =========================================================
-# FILTRADO Y ENMASCARAMIENTO CON SCL — POR DÍA
+# FILTRADO Y ENMASCARAMIENTO CON SCL: POR DÍA
 # =========================================================
 
 def compute_cloud_fraction(scl_map, cloud_categories):
@@ -752,9 +752,9 @@ def process_daily_scenes(scenes_for_date, cloud_categories, discard_threshold, m
       1. Importa las SCL de todas las teselas del día (a 20 m, recortadas al ROI).
       2. Ensambla las SCL en un mosaico diario con r.patch.
       3. Evalúa el % de nubes del MOSAICO completo sobre el ROI.
-         — El umbral se aplica al ensamble del día, no a cada tesela
-           individualmente. Así se evita que una tesela marginal con
-           poca cobertura pase el filtro y genere franjas en el resultado.
+         El umbral se aplica al ensamble del día, no a cada tesela
+         individualmente. Así se evita que una tesela marginal con
+         poca cobertura pase el filtro y genere franjas en el resultado.
       4. Si el mosaico supera el umbral → descartar el día completo.
       5. Si pasa → importar B04/B08 de todas las teselas, ensamblar,
          aplicar máscara de nubes del mosaico SCL.
@@ -907,7 +907,7 @@ def process_daily_scenes(scenes_for_date, cloud_categories, discard_threshold, m
         overwrite=True
     )
 
-    print(f"    ✔ Mosaico enmascarado — {cloud_pct:.1f}% píxeles de nubes")
+    print(f"    ✔ Mosaico enmascarado: {cloud_pct:.1f}% píxeles de nubes")
 
     # --- Limpieza de mapas por tesela ---
     # Una vez patcheadas en el mosaico diario, las teselas individuales
@@ -999,7 +999,7 @@ def compute_daily_ndvi(valid_days):
     Parameters
     ----------
     valid_days : list[dict]
-        Salida de process_all_dates() — dicts con date, b04, b08.
+        Salida de process_all_dates(): dicts con date, b04, b08.
 
     Returns
     -------
@@ -1069,11 +1069,11 @@ def resample_and_categorize():
     Remuestrea NDVI_median de 10 m a 100 m usando el valor máximo de cada
     celda de destino, y categoriza en 5 clases:
 
-        NDVI <= 0.0  ->  0      (sin vegetación / suelo desnudo — no apto)
-        NDVI >  0.6  ->  0.25   (vegetación muy densa — poco apto)
-        NDVI <= 0.2  ->  0.5    (vegetación muy escasa — moderadamente apto)
-        NDVI <= 0.4  ->  0.75   (vegetación escasa — muy apto)
-        NDVI <= 0.6  ->  1      (vegetación moderada — óptimo)
+        NDVI <= 0.0  ->  0      (sin vegetación / suelo desnudo: no apto)
+        NDVI >  0.6  ->  0.25   (vegetación muy densa: poco apto)
+        NDVI <= 0.2  ->  0.5    (vegetación muy escasa: moderadamente apto)
+        NDVI <= 0.4  ->  0.75   (vegetación escasa: muy apto)
+        NDVI <= 0.6  ->  1      (vegetación moderada: óptimo)
 
     Cambia la región a 100 m solo para generar estos mapas derivados.
     La región se restaura a 10 m al terminar para no afectar exportaciones
@@ -1253,7 +1253,7 @@ def run_week(localidad, start_date, end_date, roi_path,
         print(f"  {s['date']}  {s['scene_name']}")
 
     # --- Procesamiento por mosaico diario (filtro SCL + enmascaramiento) ---
-    print(f"\nFiltro SCL — umbral de descarte: {CLOUD_DISCARD_THRESHOLD*100:.0f}%")
+    print(f"\nFiltro SCL: umbral de descarte: {CLOUD_DISCARD_THRESHOLD*100:.0f}%")
     print(f"Categorías enmascaradas: {SCL_CLOUD_CATEGORIES}")
     print("  (filtro aplicado sobre el mosaico diario completo, no por tesela)")
 
