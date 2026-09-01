@@ -83,15 +83,38 @@ def bounds_categoricos(gid: str) -> list[float]:
     return [0.0, YOUDEN[gid], q33, q66, 1.0]
 
 
-def categoria_dominante(gid: str, arr: np.ndarray) -> tuple[str, str]:
-    """Categoria mas frecuente entre los pixeles validos de esta semana:
-    para el semaforo, el resumen de un solo vistazo."""
+def codigo_categoria_dominante(gid: str, arr: np.ndarray) -> int:
+    """Categoria mas frecuente entre los pixeles validos de esta semana
+    (-1 si no hay datos): para el semaforo, el resumen de un solo vistazo."""
     validos = arr[~np.isnan(arr)]
     if validos.size == 0:
-        return "Sin datos", "#999999"
+        return -1
     codigos = np.digitize(validos, bounds_categoricos(gid)[1:-1])
-    codigo_dominante = int(np.bincount(codigos, minlength=len(PALETA)).argmax())
-    return CATEGORIAS[codigo_dominante], PALETA[codigo_dominante]
+    return int(np.bincount(codigos, minlength=len(PALETA)).argmax())
+
+
+def semaforo_html(codigo_activo: int) -> str:
+    """Tira horizontal con las 4 categorias siempre visibles (la silueta
+    completa), resaltando solo la que corresponde a la semana seleccionada
+    -- como un semaforo real, no un solo pill de texto."""
+    pills = []
+    etiquetas = [c.replace("Actividad ", "") for c in CATEGORIAS]
+    for i, (color, etiqueta) in enumerate(zip(PALETA, etiquetas)):
+        if i == codigo_activo:
+            estilo = (
+                f"background:{color}; color:white; font-weight:700; "
+                f"box-shadow:0 1px 4px rgba(0,0,0,0.35);"
+            )
+        else:
+            estilo = (
+                f"background:transparent; color:{color}; font-weight:500; "
+                f"border:2px solid {color}; opacity:0.45;"
+            )
+        pills.append(
+            f'<div style="{estilo} flex:1; text-align:center; padding:8px 4px; '
+            f'border-radius:8px; font-size:0.85rem;">{etiqueta}</div>'
+        )
+    return f'<div style="display:flex; gap:6px; margin:6px 0 4px 0;">{"".join(pills)}</div>'
 
 
 @st.cache_data
@@ -229,6 +252,38 @@ def cargar_serie_meteorologica(gid: str) -> pd.DataFrame | None:
     return df[["date", "precipitations", "temperature", "rh"]]
 
 
+def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int | None, height: int) -> go.Figure:
+    """dias_atras=None -> serie completa disponible, sin recortar."""
+    hoy = pd.Timestamp(date.today())
+    real = df_ovip[df_ovip["date"] <= hoy]
+    pronost = df_ovip[df_ovip["date"] >= hoy]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=real["date"], y=real["indice_oviposicion"],
+        mode="lines", name="Confirmado", line=dict(color="#1f77b4"),
+    ))
+    fin_pronost = hoy
+    if not pronost.empty:
+        fin_pronost = pronost["date"].max()
+        fig.add_vrect(x0=hoy, x1=fin_pronost, fillcolor="#1f77b4", opacity=0.08, line_width=0)
+        fig.add_trace(go.Scatter(
+            x=pronost["date"], y=pronost["indice_oviposicion"],
+            mode="lines+markers", name="Pronosticado (CFS, 14 días)",
+            line=dict(color="#1f77b4", dash="dash", width=2.5),
+            marker=dict(size=4),
+        ))
+    fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
+    inicio = (hoy - pd.Timedelta(days=dias_atras)) if dias_atras else df_ovip["date"].min()
+    fig.update_layout(
+        title=titulo, yaxis_range=[0, 1], yaxis_title="Índice (0-1)",
+        xaxis_title=None, height=height, margin=dict(t=50, b=10, l=10, r=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
+        xaxis_range=[inicio, fin_pronost + pd.Timedelta(days=3)],
+    )
+    return fig
+
+
 def cargar_estado_orquestador() -> dict | None:
     if not ESTADO_JSON.exists():
         return None
@@ -273,18 +328,10 @@ with tab_panel:
     ia_path = IA_DIR / f"{semana}_{gid}_indice_actividad.tif"
     sigma_path = IA_DIR / f"{semana}_{gid}_sigma.tif"
     arr_ia, bounds = cargar_raster_4326(str(ia_path))
-    cat_nombre, cat_color = categoria_dominante(gid, arr_ia)
+    codigo_activo = codigo_categoria_dominante(gid, arr_ia)
 
-    col_titulo, col_semaforo = st.columns([4, 1])
-    with col_titulo:
-        st.subheader(f"{nombre}: semana finalizada el {semana}")
-    with col_semaforo:
-        st.markdown(
-            f'<div style="background:{cat_color}; color:white; text-align:center; '
-            f'padding:8px 4px; border-radius:8px; font-weight:600; margin-top:8px;">'
-            f'{cat_nombre}</div>',
-            unsafe_allow_html=True,
-        )
+    st.subheader(f"{nombre}: semana finalizada el {semana}")
+    st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
 
     col_mapa, col_ovip = st.columns([3, 2])
 
@@ -322,7 +369,7 @@ with tab_panel:
             )
             capa_sigma.add_to(m)
 
-        folium.LayerControl(collapsed=False).add_to(m)
+        folium.LayerControl(collapsed=True).add_to(m)
         m.fit_bounds(bounds)
         st_folium(m, height=480, use_container_width=True, returned_objects=[])
 
@@ -340,36 +387,20 @@ with tab_panel:
         if df_ovip is None:
             st.info("Sin datos de índice de oviposición para esta localidad.")
         else:
-            hoy = pd.Timestamp(date.today())
-            real = df_ovip[df_ovip["date"] <= hoy]
-            pronost = df_ovip[df_ovip["date"] >= hoy]
-
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(
-                x=real["date"], y=real["indice_oviposicion"],
-                mode="lines", name="Confirmado", line=dict(color="#1f77b4"),
-            ))
-            fin_pronost = hoy
-            if not pronost.empty:
-                fin_pronost = pronost["date"].max()
-                fig.add_vrect(
-                    x0=hoy, x1=fin_pronost, fillcolor="#1f77b4", opacity=0.08, line_width=0,
-                )
-                fig.add_trace(go.Scatter(
-                    x=pronost["date"], y=pronost["indice_oviposicion"],
-                    mode="lines+markers", name="Pronosticado (CFS, 14 días)",
-                    line=dict(color="#1f77b4", dash="dash", width=2.5),
-                    marker=dict(size=4),
-                ))
-            fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
-            fig.update_layout(
-                title="Índice de oviposición",
-                yaxis_range=[0, 1], yaxis_title="Índice (0-1)",
-                xaxis_title=None, height=480, margin=dict(t=60, b=10, l=10, r=10),
-                legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
-                xaxis_range=[hoy - pd.Timedelta(days=180), fin_pronost + pd.Timedelta(days=3)],
+            st.plotly_chart(
+                fig_indice_oviposicion(
+                    df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
+                    dias_atras=90, height=230,
+                ),
+                use_container_width=True,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(
+                fig_indice_oviposicion(
+                    df_ovip, "Índice de oviposición: serie completa",
+                    dias_atras=None, height=230,
+                ),
+                use_container_width=True,
+            )
 
     with st.expander("Evolución del índice de actividad (serie temporal y mapas animados)"):
         df_serie = serie_temporal_indice_actividad(gid)
