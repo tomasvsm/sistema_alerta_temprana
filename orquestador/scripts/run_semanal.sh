@@ -100,3 +100,35 @@ fi
 
 echo ""
 echo "  Log completo: $LOGFILE"
+
+# --- Estado consolidado, para que el dashboard lo lea -----------------------
+# Se pisa en cada corrida (siempre representa la corrida MAS RECIENTE, no un
+# historico) -- el dashboard solo necesita saber si HOY hay que mostrar el
+# cartel rojo o no. El log fechado (arriba) queda como historial para debug
+# manual, este JSON es la unica fuente que el dashboard deberia leer.
+ESTADO_JSON="$LOGDIR/estado_ultima_corrida.json"
+PASO_clima="${ESTADO[clima]:-no_corrido}" \
+PASO_modelo_temporal="${ESTADO[modelo_temporal]:-no_corrido}" \
+PASO_vegetacion="${ESTADO[vegetacion]:-no_corrido}" \
+PASO_mcda="${ESTADO[mcda]:-no_corrido}" \
+PASO_indice_actividad="${ESTADO[indice_actividad]:-no_corrido}" \
+FECHA_CORRIDA="$FECHA_CORRIDA" FECHA_REF="$FECHA_REF" HUBO_ERROR="$hubo_error" LOGFILE="$LOGFILE" \
+ESTADO_JSON="$ESTADO_JSON" \
+python3 - <<'PYEOF'
+import json, os
+
+pasos = {
+    nombre: os.environ[f"PASO_{nombre}"]
+    for nombre in ["clima", "modelo_temporal", "vegetacion", "mcda", "indice_actividad"]
+}
+estado = {
+    "fecha_corrida": os.environ["FECHA_CORRIDA"],
+    "fecha_ref": os.environ["FECHA_REF"],
+    "hubo_error": os.environ["HUBO_ERROR"] == "1",
+    "pasos": pasos,
+    "log": os.environ["LOGFILE"],
+}
+with open(os.environ["ESTADO_JSON"], "w") as f:
+    json.dump(estado, f, indent=2, ensure_ascii=False)
+print(f"  Estado consolidado: {os.environ['ESTADO_JSON']}")
+PYEOF
