@@ -6,7 +6,7 @@ static_variables_pipeline.py
 =============================
 Pipeline para calcular variables estáticas del MCDA para una localidad dada:
 
-  1. Construcciones (altura) — procesado enteramente con rasterio/numpy/geopandas:
+  1. Construcciones (altura): procesado enteramente con rasterio/numpy/geopandas:
        - Detecta automáticamente si el DEM 5m cubre el ROI:
            * Si cubre → DEM 5m - FABDEM remuestrado a 5m (alta resolución)
            * Si no    → DEM 30m - FABDEM 30m directamente
@@ -19,12 +19,12 @@ Pipeline para calcular variables estáticas del MCDA para una localidad dada:
        - Exporta la altura sin categorizar (metros) a resolución nativa
        - Categoriza y exporta a resolución nativa y a 100m
 
-  2. Población humana (WorldPop) — procesado con GRASS:
+  2. Población humana (WorldPop): procesado con GRASS:
        - Importa densidad poblacional 100m
        - Exporta la densidad sin categorizar a 100m
        - Categoriza y exporta a 100m
 
-  3. Variable socioeconómica (NBI) — procesado con GRASS:
+  3. Variable socioeconómica (NBI): procesado con GRASS:
        - Importa radios censales NBI
        - Rasteriza a 100m
        - Exporta la proporción NBI sin categorizar a 100m
@@ -33,7 +33,7 @@ Pipeline para calcular variables estáticas del MCDA para una localidad dada:
 Parámetros configurables:
     OUTPUT_BASE                  Directorio raíz de salida
     ROI_CACHE_DIR                Directorio con GPKGs de ROI precalculados
-    PATH_DEM_5m                  DEM 5m (cobertura parcial — sierras de Córdoba)
+    PATH_DEM_5m                  DEM 5m (cobertura parcial: sierras de Córdoba)
     PATH_DEM_30m                 DEM 30m (cobertura provincial completa)
     PATH_FABDEM                  FABDEM 30m (mosaico de tiles)
     PATH_OPEN_BUILDINGS_TILES    Lista de tiles de Open Buildings
@@ -201,7 +201,7 @@ def write_log(paths, gid, layers_imported, layers_reused, use_5m_dem, success):
     log_path = os.path.join(paths["base"], f"gid_{gid}_estaticas_procesamiento.txt")
     lines = []
     lines.append("=" * 60)
-    lines.append("  VARIABLES ESTÁTICAS MCDA — LOG DE PROCESAMIENTO")
+    lines.append("  VARIABLES ESTÁTICAS MCDA: LOG DE PROCESAMIENTO")
     lines.append("=" * 60)
     lines.append(f"  Localidad (gid):  {gid}")
     lines.append(f"  Fecha de log:     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -215,7 +215,7 @@ def write_log(paths, gid, layers_imported, layers_reused, use_5m_dem, success):
         for l in layers_imported:
             lines.append(f"  {l}")
     else:
-        lines.append("  (ninguna — todas reutilizadas)")
+        lines.append("  (ninguna: todas reutilizadas)")
     lines.append("")
     lines.append("-" * 60)
     lines.append("  CAPAS REUTILIZADAS DEL MAPSET")
@@ -262,9 +262,9 @@ def import_base_layers_grass(roi_path, gid):
     print("  Verificando cobertura del DEM 5m sobre el ROI...")
     use_5m_dem = dem_covers_roi(PATH_DEM_5m, roi_path)
     if use_5m_dem:
-        print("  ✔ DEM 5m cubre el ROI — construcciones a 5m.")
+        print("  ✔ DEM 5m cubre el ROI: construcciones a 5m.")
     else:
-        print("  ⚠ DEM 5m no cubre el ROI — construcciones a 30m.")
+        print("  ⚠ DEM 5m no cubre el ROI: construcciones a 30m.")
 
     # --- WorldPop 100m ---
     pop_map = f"population_density_gid_{gid}"
@@ -306,7 +306,7 @@ def import_base_layers_grass(roi_path, gid):
 def process_construcciones(gid, paths, run_name, roi_path, use_5m_dem):
     """
     Calcula la variable de altura de construcciones enteramente con
-    rasterio, numpy y geopandas — sin usar GRASS para evitar problemas
+    rasterio, numpy y geopandas: sin usar GRASS para evitar problemas
     de topología con polígonos solapados de Open Buildings.
 
     Flujo:
@@ -425,7 +425,7 @@ def process_construcciones(gid, paths, run_name, roi_path, use_5m_dem):
         max_heights.append(max_h)
 
     buildings["bh_maximum"] = max_heights
-    print(f"  Altura máxima calculada — max={max(max_heights):.1f}m, "
+    print(f"  Altura máxima calculada: max={max(max_heights):.1f}m, "
           f"edificios con altura>0: {sum(h > 0 for h in max_heights)}")
 
     # --- Rasterizar altura máxima por polígono ---

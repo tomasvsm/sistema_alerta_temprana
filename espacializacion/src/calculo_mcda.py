@@ -43,7 +43,7 @@ VEG_BASE_DIR = "data/vegetacion"
 EST_BASE_DIR = "estaticas"
 OUTPUT_DIR   = "output/MCDA"
 
-# Coeficientes MCDA (AHP) — deben sumar 1.0. Los valores redondeados a 3
+# Coeficientes MCDA (AHP): deben sumar 1.0. Los valores redondeados a 3
 # decimales (0.550/0.240/0.095/0.095) sumaban 0.980 -- se corrige con un
 # decimal mas de precision del analisis AHP (suman 1.0001, residuo despreciable).
 W_VEG   = 0.5596
@@ -105,7 +105,7 @@ def get_veg_folders(gid):
         ndvi_path = os.path.join(folder_path, "outputs", "final", ndvi_filename)
 
         if not os.path.exists(ndvi_path):
-            print(f"  [AVISO] No se encontró NDVI en: {ndvi_path} — saltando.")
+            print(f"  [AVISO] No se encontró NDVI en: {ndvi_path}: saltando.")
             continue
 
         folders.append({
@@ -341,7 +341,7 @@ def process_gid(gid):
             continue
 
         try:
-            # Leer NDVI — se usa como grilla de referencia
+            # Leer NDVI: se usa como grilla de referencia
             ndvi_arr, ndvi_transform, ndvi_crs, ndvi_nodata = \
                 read_raster(veg["ndvi_path"])
             ndvi_arr = np.where(ndvi_arr == ndvi_nodata, np.nan, ndvi_arr)

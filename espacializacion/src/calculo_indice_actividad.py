@@ -176,7 +176,7 @@ def main():
 
         oviposicion_daily = get_daily_oviposicion(df_ovip, end_date_str)
         if oviposicion_daily is None:
-            print(f"  [AVISO] Sin oviposición completa para gid={gid} fecha={end_date_str} — saltando.")
+            print(f"  [AVISO] Sin oviposición completa para gid={gid} fecha={end_date_str}: saltando.")
             n_sin_ovip += 1
             continue
 
@@ -191,7 +191,7 @@ def main():
             save_tiff(idA_arr, mcda_path, out_idA)
             save_tiff(sigma_arr, mcda_path, out_sigma)
 
-            print(f"  ✔  {end_date_str} gid={gid} — "
+            print(f"  ✔  {end_date_str} gid={gid}: "
                   f"IdA=[{np.nanmin(idA_arr):.3f}, {np.nanmax(idA_arr):.3f}]  "
                   f"σ=[{np.nanmin(sigma_arr):.3f}, {np.nanmax(sigma_arr):.3f}]")
             n_ok += 1
