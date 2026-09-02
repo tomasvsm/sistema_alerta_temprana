@@ -28,7 +28,9 @@ import plotly.graph_objects as go
 import rasterio
 import streamlit as st
 from matplotlib import colors as mcolors
+from rasterio.features import shapes as rio_shapes
 from rasterio.vrt import WarpedVRT
+from rasterio.warp import transform as rio_transform
 from streamlit_folium import st_folium
 import folium
 
@@ -159,6 +161,29 @@ def cargar_raster_4326(path: str):
             nodata = vrt.nodata
     arr = np.where(arr == nodata, np.nan, arr)
     return arr, [[bounds.bottom, bounds.left], [bounds.top, bounds.right]]
+
+
+@st.cache_data
+def contorno_roi_4326(path: str) -> list[list[list[float]]]:
+    """Anillos (exterior + agujeros, ej. nubes enmascaradas) del limite del
+    ejido/ROI, trazados directo desde la mascara de nodata del propio
+    raster y reproyectados a EPSG:4326 -- para dibujar un borde prolijo
+    en vez de dejar los bordes de pixel crudos contra el mapa base
+    (mismo criterio que draw_roi_outline en el generador de PDFs)."""
+    with rasterio.open(path) as src:
+        arr = src.read(1)
+        nodata = src.nodata if src.nodata is not None else -9999
+        mask = (arr != nodata).astype(np.uint8)
+        anillos = []
+        for geom, valor in rio_shapes(mask, mask=None, transform=src.transform):
+            if valor != 1:
+                continue
+            for anillo in [geom["coordinates"][0], *geom["coordinates"][1:]]:
+                xs = [c[0] for c in anillo]
+                ys = [c[1] for c in anillo]
+                lons, lats = rio_transform(src.crs, "EPSG:4326", xs, ys)
+                anillos.append([[lat, lon] for lat, lon in zip(lats, lons)])
+    return anillos
 
 
 def raster_a_imagen_rgba(arr: np.ndarray, gid: str | None, cmap_continuo: bool) -> np.ndarray:
@@ -294,7 +319,7 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
         fig.add_vrect(x0=hoy, x1=fin_pronost, fillcolor="#1f77b4", opacity=0.08, line_width=0)
         fig.add_trace(go.Scatter(
             x=pronost["date"], y=pronost["indice_oviposicion"],
-            mode="lines", name="Pronosticado (CFS, 14 días)",
+            mode="lines", name="Pronosticado (14 días)",
             line=dict(color="#e07b39", width=2.5),
         ))
     fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
@@ -304,6 +329,7 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
         xaxis_title=None, height=height, margin=dict(t=50, b=10, l=10, r=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
         xaxis_range=[inicio, fin_pronost + pd.Timedelta(days=3)],
+        xaxis=dict(tickformat="%Y-%m"),
     )
     return fig
 
@@ -399,13 +425,13 @@ with tab_panel:
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
                   "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri, HERE, Garmin, FAO, NOAA, USGS",
+            attr="Esri",
             name="Claro", show=True,
         ).add_to(m)
         folium.TileLayer(
             tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
                   "World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri, Maxar, Earthstar Geographics",
+            attr="Esri",
             name="Satelital", show=False,
         ).add_to(m)
         folium.raster_layers.ImageOverlay(
@@ -414,6 +440,11 @@ with tab_panel:
             name="Índice de actividad",
             opacity=0.75,
         ).add_to(m)
+
+        for anillo in contorno_roi_4326(str(ia_path)):
+            folium.PolyLine(
+                locations=anillo, color="#8a8a8a", weight=1.2, opacity=0.8,
+            ).add_to(m)
 
         if sigma_path.exists():
             arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path))
@@ -478,6 +509,7 @@ with tab_panel:
                 height=280, margin=dict(t=30, b=10, l=10, r=10),
                 yaxis_title="Índice de actividad", xaxis_title=None,
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
+                xaxis=dict(tickformat="%Y-%m"),
             )
             st.plotly_chart(fig_serie, use_container_width=True)
 
@@ -514,6 +546,7 @@ with tab_panel:
                 yaxis=dict(title="Precipitación (mm)"),
                 yaxis2=dict(title="°C / %", overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
+                xaxis=dict(tickformat="%Y-%m-%d"),
             )
             st.plotly_chart(fig_met, use_container_width=True)
 
@@ -560,5 +593,7 @@ satélite, y recalculando el índice de actividad.
 - Pronóstico: NOAA CFS (vía NOMADS)
 - Vegetación: Copernicus Sentinel-2 L2A (NDVI, vía EODAG)
 - Población / NBI / construcciones: WorldPop, INDEC, Open Buildings
+- Mapas base: Esri World Light Gray Canvas (HERE, Garmin, FAO, NOAA, USGS)
+  y Esri World Imagery (Maxar, Earthstar Geographics)
         """
     )
