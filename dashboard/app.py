@@ -506,7 +506,7 @@ with tab_panel:
             st.plotly_chart(
                 fig_indice_oviposicion(
                     df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
-                    dias_atras=90, height=230,
+                    dias_atras=90, height=270,
                 ),
                 use_container_width=True,
             )
@@ -514,7 +514,7 @@ with tab_panel:
             st.plotly_chart(
                 fig_indice_oviposicion(
                     df_ovip, f"Índice de oviposición: desde {desde}",
-                    dias_atras=None, height=230,
+                    dias_atras=None, height=270,
                 ),
                 use_container_width=True,
             )
