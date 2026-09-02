@@ -381,6 +381,8 @@ st.markdown(
     header[data-testid="stHeader"] { background: transparent; height: 2.5rem; }
     div[data-testid="stAppDeployButton"] { display: none; }
     .block-container { padding-top: 0.8rem; }
+    div[data-testid="stHeading"]:has(h1) { text-align: center; }
+    div[data-testid="stHeading"] h1 { font-size: 2rem; }
     </style>""",
     unsafe_allow_html=True,
 )
