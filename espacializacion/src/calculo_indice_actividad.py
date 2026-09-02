@@ -25,6 +25,7 @@ Uso:
   python3 calculo_indice_actividad.py
 """
 
+import datetime
 import os
 import re
 import numpy as np
@@ -93,12 +94,27 @@ def get_daily_oviposicion(df, end_date_str):
     Extrae los 7 valores diarios del índice de oviposición para la semana
     que termina en end_date_str, con piso mínimo aplicado.
 
+    El índice de actividad es puramente retrospectivo (ver README/"Acerca
+    de" del dashboard) -- nunca debe usar días pronosticados, aunque el
+    CSV de oviposición sí los tenga (actualizar_clima_semanal.py le agrega
+    una cola de pronóstico CFS de 14 días todas las semanas). Por eso se
+    rechaza la semana completa si termina despues de "hoy", en vez de
+    solo chequear que haya 7 filas -- antes de que existiera esa cola de
+    pronóstico esto se resolvia solo (esos dias no tenian fila y la
+    semana se salteaba), pero con la cola presente el chequeo de longitud
+    ya no alcanza: hay filas, son de pronóstico. Bug real detectado
+    2026-09-02, confirmado con el CSV de Córdoba llegando hasta
+    2026-09-11 mientras la corrida real era del 2026-09-02.
+
     Returns
     -------
     list[float] o None
-        7 valores [d1..d7], o None si no hay datos para alguno de los días.
+        7 valores [d1..d7], o None si no hay datos para alguno de los
+        días, o si la semana se extiende mas alla de hoy.
     """
     end_date = pd.to_datetime(end_date_str)
+    if end_date.date() > datetime.date.today():
+        return None
     week = df[(df["date"] > end_date - pd.Timedelta(days=7)) & (df["date"] <= end_date)]
     if len(week) < 7:
         return None

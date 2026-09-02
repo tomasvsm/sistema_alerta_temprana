@@ -83,14 +83,27 @@ def bounds_categoricos(gid: str) -> list[float]:
     return [0.0, YOUDEN[gid], q33, q66, 1.0]
 
 
-def codigo_categoria_dominante(gid: str, arr: np.ndarray) -> int:
-    """Categoria mas frecuente entre los pixeles validos de esta semana
-    (-1 si no hay datos): para el semaforo, el resumen de un solo vistazo."""
+def codigo_categoria_maxima(gid: str, arr: np.ndarray) -> int:
+    """Categoria MAS ALTA presente entre los pixeles validos de esta
+    semana (-1 si no hay datos), no la mas frecuente: un solo pixel en una
+    categoria superior ya sube el semaforo a ese nivel. Criterio de
+    alerta temprana -- mas sensible que el promedio/moda, que casi
+    siempre daria "baja" porque la mayoria del area esta genuinamente
+    baja la mayor parte del tiempo (ver hallazgo del 2026-09-01)."""
     validos = arr[~np.isnan(arr)]
     if validos.size == 0:
         return -1
     codigos = np.digitize(validos, bounds_categoricos(gid)[1:-1])
-    return int(np.bincount(codigos, minlength=len(PALETA)).argmax())
+    return int(codigos.max())
+
+
+def _texto_legible_sobre(color_hex: str) -> str:
+    """Negro o blanco segun la luminancia del color de fondo -- algunos
+    colores de PALETA (ej. "alta", verde amarillento muy palido) son
+    ilegibles con texto blanco encima."""
+    r, g, b = (int(color_hex[i:i + 2], 16) for i in (1, 3, 5))
+    luminancia = 0.299 * r + 0.587 * g + 0.114 * b
+    return "#1a1a1a" if luminancia > 150 else "#ffffff"
 
 
 def semaforo_html(codigo_activo: int) -> str:
@@ -101,14 +114,18 @@ def semaforo_html(codigo_activo: int) -> str:
     etiquetas = [c.replace("Actividad ", "") for c in CATEGORIAS]
     for i, (color, etiqueta) in enumerate(zip(PALETA, etiquetas)):
         if i == codigo_activo:
+            texto = _texto_legible_sobre(color)
             estilo = (
-                f"background:{color}; color:white; font-weight:700; "
+                f"background:{color}; color:{texto}; font-weight:700; "
                 f"box-shadow:0 1px 4px rgba(0,0,0,0.35);"
             )
         else:
+            # Texto siempre en un gris neutro (no en el color de la
+            # categoria): un color palido como texto sobre fondo blanco
+            # es tan ilegible como texto blanco sobre ese mismo color.
             estilo = (
-                f"background:transparent; color:{color}; font-weight:500; "
-                f"border:2px solid {color}; opacity:0.45;"
+                f"background:transparent; color:#6b6b6b; font-weight:500; "
+                f"border:2px solid {color};"
             )
         pills.append(
             f'<div style="{estilo} flex:1; text-align:center; padding:8px 4px; '
@@ -277,9 +294,8 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
         fig.add_vrect(x0=hoy, x1=fin_pronost, fillcolor="#1f77b4", opacity=0.08, line_width=0)
         fig.add_trace(go.Scatter(
             x=pronost["date"], y=pronost["indice_oviposicion"],
-            mode="lines+markers", name="Pronosticado (CFS, 14 días)",
+            mode="lines", name="Pronosticado (CFS, 14 días)",
             line=dict(color="#e07b39", width=2.5),
-            marker=dict(size=4, color="#e07b39"),
         ))
     fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
     inicio = (hoy - pd.Timedelta(days=dias_atras)) if dias_atras else df_ovip["date"].min()
@@ -360,7 +376,7 @@ with tab_panel:
     ia_path = IA_DIR / f"{semana}_{gid}_indice_actividad.tif"
     sigma_path = IA_DIR / f"{semana}_{gid}_sigma.tif"
     arr_ia, bounds = cargar_raster_4326(str(ia_path))
-    codigo_activo = codigo_categoria_dominante(gid, arr_ia)
+    codigo_activo = codigo_categoria_maxima(gid, arr_ia)
 
     st.subheader(f"{nombre}: semana finalizada el {semana}")
     st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
