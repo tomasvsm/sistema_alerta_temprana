@@ -134,7 +134,7 @@ def semaforo_html(codigo_activo: int) -> str:
             # categoria): un color palido como texto sobre fondo blanco
             # es tan ilegible como texto blanco sobre ese mismo color.
             estilo = (
-                f"background:{_hex_con_alpha(color, 0.18)}; color:#6b6b6b; "
+                f"background:{_hex_con_alpha(color, 0.07)}; color:#6b6b6b; "
                 f"font-weight:500; border:2px solid {color};"
             )
         pills.append(
@@ -378,8 +378,9 @@ def cargar_estado_orquestador() -> dict | None:
 st.set_page_config(page_title="Alerta temprana Aedes aegypti", layout="wide")
 st.markdown(
     """<style>
-    header[data-testid="stHeader"] { display: none; }
-    .block-container { padding-top: 1.5rem; }
+    header[data-testid="stHeader"] { background: transparent; height: 2.5rem; }
+    div[data-testid="stAppDeployButton"] { display: none; }
+    .block-container { padding-top: 0.8rem; }
     </style>""",
     unsafe_allow_html=True,
 )
