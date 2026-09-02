@@ -108,10 +108,18 @@ def _texto_legible_sobre(color_hex: str) -> str:
     return "#1a1a1a" if luminancia > 150 else "#ffffff"
 
 
+def _hex_con_alpha(color_hex: str, alpha: float) -> str:
+    r, g, b = (int(color_hex[i:i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def semaforo_html(codigo_activo: int) -> str:
     """Recuadro propio con titulo y las 4 categorias siempre visibles (la
-    silueta completa), resaltando solo la que corresponde a la semana
-    seleccionada -- como un semaforo real, no un solo pill de texto."""
+    silueta completa, con relleno translucido del color propio para que se
+    entienda que forman un conjunto), resaltando solo la que corresponde a
+    la semana seleccionada -- como un semaforo real, no un solo pill de
+    texto. Grilla 2x2 (no una fila de 4) para poder vivir angosto, en el
+    espacio libre junto a los selectores de localidad/semana."""
     pills = []
     etiquetas = [c.replace("Actividad ", "") for c in CATEGORIAS]
     for i, (color, etiqueta) in enumerate(zip(PALETA, etiquetas)):
@@ -126,19 +134,19 @@ def semaforo_html(codigo_activo: int) -> str:
             # categoria): un color palido como texto sobre fondo blanco
             # es tan ilegible como texto blanco sobre ese mismo color.
             estilo = (
-                f"background:transparent; color:#6b6b6b; font-weight:500; "
-                f"border:2px solid {color};"
+                f"background:{_hex_con_alpha(color, 0.18)}; color:#6b6b6b; "
+                f"font-weight:500; border:2px solid {color};"
             )
         pills.append(
-            f'<div style="{estilo} flex:1; text-align:center; padding:8px 4px; '
-            f'border-radius:8px; font-size:0.85rem;">{etiqueta}</div>'
+            f'<div style="{estilo} text-align:center; padding:6px 4px; '
+            f'border-radius:8px; font-size:0.82rem;">{etiqueta}</div>'
         )
     filas = "".join(pills)
     return (
         '<div style="border:1px solid rgba(128,128,128,0.35); border-radius:10px; '
-        'padding:10px 14px 12px 14px; margin:8px 0 12px 0;">'
+        'padding:8px 12px 10px 12px; margin:0 0 6px 0;">'
         '<div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
-        'opacity:0.65; margin-bottom:8px; display:flex; align-items:center; gap:5px;">'
+        'opacity:0.65; margin-bottom:6px; display:flex; align-items:center; gap:5px;">'
         '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" '
         'style="flex-shrink:0;">'
         '<rect x="7" y="1" width="10" height="22" rx="4" stroke="currentColor" '
@@ -148,7 +156,8 @@ def semaforo_html(codigo_activo: int) -> str:
         '<circle cx="12" cy="17.5" r="2" fill="#2b9e4a"/>'
         '</svg>'
         "Nivel de actividad de esta semana</div>"
-        f'<div style="display:flex; gap:6px;">{filas}</div>'
+        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
+        f"{filas}</div>"
         "</div>"
     )
 
@@ -389,7 +398,7 @@ st.title("Sistema de alerta temprana de actividad de *Aedes aegypti*")
 tab_panel, tab_acerca = st.tabs(["Panel", "Acerca de"])
 
 with tab_panel:
-    col_sel_loc, col_sel_sem, _ = st.columns([2, 2, 5])
+    col_sel_loc, col_sel_sem, col_semaforo = st.columns([2, 2, 5])
     with col_sel_loc:
         gid = st.selectbox(
             "Localidad", options=list(GID_NOMBRE), format_func=lambda g: GID_NOMBRE[g]
@@ -432,8 +441,10 @@ with tab_panel:
     arr_ia, bounds = cargar_raster_4326(str(ia_path))
     codigo_activo = codigo_categoria_maxima(gid, arr_ia)
 
-    st.subheader(f"{nombre}: semana finalizada el {semana}")
-    st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
+    with col_semaforo:
+        st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
+
+    st.subheader(f"{nombre}: {semana}")
 
     col_mapa, col_ovip = st.columns([3, 2])
 
