@@ -383,6 +383,7 @@ st.markdown(
     .block-container { padding-top: 0.8rem; }
     div[data-testid="stHeading"]:has(h1) { text-align: center; }
     div[data-testid="stHeading"] h1 { font-size: 2rem; }
+    div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
     </style>""",
     unsafe_allow_html=True,
 )
