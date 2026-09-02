@@ -138,7 +138,16 @@ def semaforo_html(codigo_activo: int) -> str:
         '<div style="border:1px solid rgba(128,128,128,0.35); border-radius:10px; '
         'padding:10px 14px 12px 14px; margin:8px 0 12px 0;">'
         '<div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
-        'opacity:0.65; margin-bottom:8px;">Nivel de actividad de esta semana</div>'
+        'opacity:0.65; margin-bottom:8px; display:flex; align-items:center; gap:5px;">'
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" '
+        'style="flex-shrink:0;">'
+        '<rect x="7" y="1" width="10" height="22" rx="4" stroke="currentColor" '
+        'stroke-width="1.6"/>'
+        '<circle cx="12" cy="6.5" r="2" fill="currentColor"/>'
+        '<circle cx="12" cy="12" r="2" fill="currentColor"/>'
+        '<circle cx="12" cy="17.5" r="2" fill="currentColor"/>'
+        '</svg>'
+        "Nivel de actividad de esta semana</div>"
         f'<div style="display:flex; gap:6px;">{filas}</div>'
         "</div>"
     )
@@ -266,7 +275,7 @@ def figura_animada_indice_actividad(gid: str) -> go.Figure:
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        coloraxis_showscale=False, height=520, margin=dict(t=10, b=10, l=10, r=10),
+        coloraxis_showscale=False, height=420, margin=dict(t=10, b=10, l=10, r=10),
     )
     for i, frame in enumerate(fig.frames):
         frame.name = fechas[i]
@@ -497,9 +506,10 @@ with tab_panel:
                 ),
                 use_container_width=True,
             )
+            desde = df_ovip["date"].min().strftime("%Y-%m-%d")
             st.plotly_chart(
                 fig_indice_oviposicion(
-                    df_ovip, "Índice de oviposición: serie completa",
+                    df_ovip, f"Índice de oviposición: desde {desde}",
                     dias_atras=None, height=230,
                 ),
                 use_container_width=True,
@@ -521,18 +531,21 @@ with tab_panel:
                 line=dict(color="#d7191c", dash="dot", width=1),
             ))
             fig_serie.update_layout(
-                height=280, margin=dict(t=30, b=10, l=10, r=10),
+                height=420, margin=dict(t=30, b=10, l=10, r=10),
                 yaxis_title="Índice de actividad", xaxis_title=None,
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
                 xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
             )
-            st.plotly_chart(fig_serie, use_container_width=True)
 
-            st.caption(
-                "Arrastrá el control para ver cualquier semana disponible, o tocá Play "
-                "para recorrerlas todas."
-            )
-            st.plotly_chart(figura_animada_indice_actividad(gid), use_container_width=True)
+            col_evol_serie, col_evol_mapa = st.columns(2)
+            with col_evol_serie:
+                st.plotly_chart(fig_serie, use_container_width=True)
+            with col_evol_mapa:
+                st.caption(
+                    "Arrastrá el control para ver cualquier semana disponible, o tocá "
+                    "Play para recorrerlas todas."
+                )
+                st.plotly_chart(figura_animada_indice_actividad(gid), use_container_width=True)
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
