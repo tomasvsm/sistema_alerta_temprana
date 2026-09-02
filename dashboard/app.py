@@ -33,6 +33,8 @@ from rasterio.vrt import WarpedVRT
 from rasterio.warp import transform as rio_transform
 from streamlit_folium import st_folium
 import folium
+from folium import MacroElement
+from jinja2 import Template
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 IA_DIR = REPO_ROOT / "espacializacion" / "output" / "indice_actividad"
@@ -111,6 +113,70 @@ def _texto_legible_sobre(color_hex: str) -> str:
 def _hex_con_alpha(color_hex: str, alpha: float) -> str:
     r, g, b = (int(color_hex[i:i + 2], 16) for i in (1, 3, 5))
     return f"rgba({r},{g},{b},{alpha})"
+
+
+class ControlRecentrar(MacroElement):
+    """Boton "volver a la vista inicial" para el mapa: Leaflet no trae uno
+    propio, y despues de hacer zoom/paneo manual no hay forma de recentrar
+    sin recargar toda la pagina. Va como MacroElement (igual que
+    LayerControl) y no como HTML/JS insertado a mano, porque
+    streamlit-folium solo ejecuta los <script> que folium arma por su
+    mecanismo normal de render(); cualquier otra cosa insertada a mano en
+    root.html o root.script queda muerta (probado, ver historial)."""
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        (function() {
+            var mapa = {{ this._parent.get_name() }};
+            var limites = L.latLngBounds({{ this.bounds }});
+            var ControlBtn = L.Control.extend({
+                options: {position: 'topleft'},
+                onAdd: function() {
+                    var btn = L.DomUtil.create('button', 'leaflet-bar leaflet-control');
+                    btn.innerHTML = '⤢';
+                    btn.title = 'Volver a la vista inicial';
+                    btn.style.cssText = 'width:30px;height:30px;line-height:28px;' +
+                        'font-size:16px;cursor:pointer;background:white;border:none;';
+                    L.DomEvent.on(btn, 'click', function(e) {
+                        L.DomEvent.stopPropagation(e);
+                        mapa.fitBounds(limites);
+                    });
+                    return btn;
+                },
+            });
+            mapa.addControl(new ControlBtn());
+        })();
+        {% endmacro %}
+    """)
+
+    def __init__(self, bounds):
+        super().__init__()
+        self._name = "ControlRecentrar"
+        self.bounds = bounds
+
+
+def footer_html() -> str:
+    return (
+        '<div style="text-align:center; opacity:0.75; font-size:0.85rem; '
+        'display:flex; flex-direction:column; align-items:center; gap:4px;">'
+        '<a href="https://github.com/tomasvsm/sistema_alerta_temprana" '
+        'target="_blank" style="text-decoration:none; color:inherit; '
+        'display:inline-flex; align-items:center; gap:6px;">'
+        '<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">'
+        '<path fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 '
+        '5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-'
+        '2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 '
+        '1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-'
+        '.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 '
+        '0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-'
+        '1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 '
+        '3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 '
+        '2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z">'
+        "</path></svg>"
+        "github.com/tomasvsm/sistema_alerta_temprana</a>"
+        "<span>Tomás V. San Miguel · Hecho con Streamlit</span>"
+        "</div>"
+    )
 
 
 def semaforo_html(codigo_activo: int) -> str:
@@ -384,6 +450,30 @@ st.markdown(
     div[data-testid="stHeading"]:has(h1) { text-align: center; }
     div[data-testid="stHeading"] h1 { font-size: 2rem; }
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
+
+    /* Reporte imprimible: la app no esta pensada para pantallas angostas,
+       asi que sin esto el navegador imprime el layout ancho de pantalla
+       tal cual, cortado en el borde de la hoja. */
+    @media print {
+        div[data-testid="stAppViewContainer"] { overflow: visible !important; }
+        div[data-testid="stToolbarActions"],
+        div[data-testid="stTabs"] [data-baseweb="tab-list"],
+        div[data-testid="stSlider"],
+        div[data-testid="stFullScreenFrame"] button,
+        .leaflet-control-zoom { display: none !important; }
+        /* Streamlit colapsa el contenido de un expander cerrado con
+           display:none sobre un <details> nativo; forzarlo visible para
+           que no falte nada en el papel aunque el usuario no lo haya
+           abierto a mano. */
+        details:not([open]) > *:not(summary) { display: block !important; }
+        [data-testid="stExpanderDetails"] { display: block !important; height: auto !important; }
+        div[data-testid="stElementContainer"],
+        div[data-testid="stHorizontalBlock"],
+        div[data-testid="stCustomComponentV1"],
+        div[data-testid="stExpander"] { break-inside: avoid; }
+        .block-container { max-width: 100% !important; padding: 0.3rem 0.5rem !important; }
+        @page { size: A4 landscape; margin: 8mm; }
+    }
     </style>""",
     unsafe_allow_html=True,
 )
@@ -405,7 +495,8 @@ with tab_panel:
     col_sel_loc, col_sel_sem, col_semaforo = st.columns([2, 2, 5])
     with col_sel_loc:
         gid = st.selectbox(
-            "Localidad", options=list(GID_NOMBRE), format_func=lambda g: GID_NOMBRE[g]
+            "Localidad", options=list(GID_NOMBRE), format_func=lambda g: GID_NOMBRE[g],
+            filter_mode=None,
         )
     semanas = semanas_disponibles(gid)
     if not semanas:
@@ -435,6 +526,7 @@ with tab_panel:
             "Semana (fecha de fin)", options=semanas,
             index=semanas.index(st.session_state[ESTADO_SEMANA_KEY]),
             key=f"{ESTADO_SEMANA_KEY}_select", on_change=_semana_desde_selectbox,
+            filter_mode=None,
         )
     semana = st.session_state[ESTADO_SEMANA_KEY]
 
@@ -504,6 +596,9 @@ with tab_panel:
 
         folium.LayerControl(collapsed=True).add_to(m)
         m.fit_bounds(bounds)
+
+        ControlRecentrar(bounds).add_to(m)
+
         st_folium(m, height=460, use_container_width=True, returned_objects=[])
 
         st.caption(
@@ -570,7 +665,7 @@ with tab_panel:
             st.info("Sin datos meteorológicos para esta localidad.")
         else:
             hoy = pd.Timestamp(date.today())
-            ventana = df_met[df_met["date"] >= hoy - pd.Timedelta(days=200)]
+            ventana = df_met
 
             fig_met = go.Figure()
             fig_met.add_trace(go.Bar(
@@ -583,7 +678,7 @@ with tab_panel:
             ))
             fig_met.add_trace(go.Scatter(
                 x=ventana["date"], y=ventana["rh"],
-                name="Humedad relativa (%)", line=dict(color="#5aa469", dash="dot"), yaxis="y2",
+                name="Humedad relativa (%)", line=dict(color="#5aa469"), yaxis="y2",
             ))
             fig_met.add_vline(x=hoy, line_dash="dot", line_color="gray")
             fig_met.update_layout(
@@ -591,20 +686,20 @@ with tab_panel:
                 yaxis=dict(title="Precipitación (mm)"),
                 yaxis2=dict(title="°C / %", overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
-                xaxis=dict(tickformat="%Y-%m-%d"),
+                xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
             )
             st.plotly_chart(fig_met, use_container_width=True)
+
+    st.divider()
+    st.markdown(footer_html(), unsafe_allow_html=True)
 
 with tab_acerca:
     st.header("Acerca de este sistema")
     st.markdown(
         """
-Este sistema estima, semana a semana, dónde y cuánto riesgo de
-transmisión de dengue plantea *Aedes aegypti* en cuatro localidades de
-Córdoba: Córdoba capital, Río Cuarto, Villa María y Salsipuedes. Es parte
-de una tesis doctoral; el código completo (procesamiento, modelo y este
-mismo dashboard) está en
-[github.com/tomasvsm/sistema_alerta_temprana](https://github.com/tomasvsm/sistema_alerta_temprana).
+Este sistema estima, semana a semana y por zona, la actividad de
+*Aedes aegypti* (el mosquito vector del dengue) en cuatro localidades de
+Córdoba: Córdoba capital, Río Cuarto, Villa María y Salsipuedes.
 
 ### Cómo se calcula el índice de actividad
 
@@ -616,7 +711,7 @@ modelo de Aguirre
 ([Aguirre et al., 2021](https://doi.org/10.1016/j.ecoinf.2021.101351)):
 un sistema de ecuaciones diferenciales con compartimentos de huevo, larva,
 pupa y adulto, forzado día a día por precipitación, temperatura y humedad
-relativa. De la salida diaria del modelo (tasa de oviposición) se arma el
+relativa. De la salida diaria del modelo (número de huevos predichos) se arma el
 **índice de oviposición**: cada valor se estandariza entre 0 y 1 contra
 una ventana móvil de los 365 días previos, de modo que el índice mide qué
 tan alta es la oviposición de hoy *en relación al último año en ese mismo
@@ -624,11 +719,15 @@ lugar*, no en términos absolutos.
 
 **2. Modelo espacial (MCDA, análisis multicriterio).** Combina cuatro
 capas raster semanales, procesadas en GRASS GIS (proyección POSGAR 2007 /
-Argentina 4, EPSG:5346): NDVI de vegetación (Sentinel-2), densidad de
-construcciones, población y NBI (necesidades básicas insatisfechas). El
-resultado es un raster de **idoneidad de hábitat**: qué tan favorable es
-cada píxel para que el mosquito complete su ciclo, independientemente de
-si hay huevos siendo puestos esa semana o no.
+Argentina 4, EPSG:5346): NDVI de vegetación (Sentinel-2), altura de
+construcciones, población y NBI (necesidades básicas insatisfechas). La
+capa de construcciones combina los footprints de edificios de Open
+Buildings con un modelo digital de elevación (DEM del IGN) y FABDEM (un
+DEM "desnudo", sin edificios ni vegetación): la diferencia entre ambos
+aproxima la altura de cada construcción. El resultado final es un raster
+de **idoneidad de hábitat**: qué tan favorable es cada píxel para que el
+mosquito complete su ciclo, independientemente de si hay huevos siendo
+puestos esa semana o no.
 
 **Índice de actividad final**, por píxel y por semana:
 
@@ -677,10 +776,16 @@ todo si algo quedó desactualizado.
   [EODAG](https://github.com/CS-SI/eodag)
 - **Población**: [WorldPop](https://www.worldpop.org/)
 - **NBI**: [INDEC](https://www.indec.gob.ar/)
-- **Construcciones**: [Open Buildings](https://sites.research.google/gr/open-buildings/)
-  (Google)
+- **Construcciones**: footprints de
+  [Open Buildings](https://sites.research.google/gr/open-buildings/) (Google),
+  altura por diferencia entre el DEM del
+  [IGN](https://www.ign.gob.ar/) y
+  [FABDEM](https://www.fathom.global/product/fabdem/) (Fathom / Universidad
+  de Bristol)
 - **Mapas base**: [Esri](https://www.arcgis.com/) World Light Gray Canvas
   (HERE, Garmin, FAO, NOAA, USGS) y Esri World Imagery (Maxar, Earthstar
   Geographics)
         """
     )
+    st.divider()
+    st.markdown(footer_html(), unsafe_allow_html=True)
