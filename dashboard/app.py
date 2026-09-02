@@ -94,9 +94,9 @@ def codigo_categoria_dominante(gid: str, arr: np.ndarray) -> int:
 
 
 def semaforo_html(codigo_activo: int) -> str:
-    """Tira horizontal con las 4 categorias siempre visibles (la silueta
-    completa), resaltando solo la que corresponde a la semana seleccionada
-    -- como un semaforo real, no un solo pill de texto."""
+    """Recuadro propio con titulo y las 4 categorias siempre visibles (la
+    silueta completa), resaltando solo la que corresponde a la semana
+    seleccionada -- como un semaforo real, no un solo pill de texto."""
     pills = []
     etiquetas = [c.replace("Actividad ", "") for c in CATEGORIAS]
     for i, (color, etiqueta) in enumerate(zip(PALETA, etiquetas)):
@@ -114,7 +114,15 @@ def semaforo_html(codigo_activo: int) -> str:
             f'<div style="{estilo} flex:1; text-align:center; padding:8px 4px; '
             f'border-radius:8px; font-size:0.85rem;">{etiqueta}</div>'
         )
-    return f'<div style="display:flex; gap:6px; margin:6px 0 4px 0;">{"".join(pills)}</div>'
+    filas = "".join(pills)
+    return (
+        '<div style="border:1px solid rgba(128,128,128,0.35); border-radius:10px; '
+        'padding:10px 14px 12px 14px; margin:8px 0 12px 0;">'
+        '<div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
+        'opacity:0.65; margin-bottom:8px;">Nivel de actividad de esta semana</div>'
+        f'<div style="display:flex; gap:6px;">{filas}</div>'
+        "</div>"
+    )
 
 
 @st.cache_data
@@ -261,7 +269,7 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
     fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=real["date"], y=real["indice_oviposicion"],
-        mode="lines", name="Confirmado", line=dict(color="#1f77b4"),
+        mode="lines", name="Histórico", line=dict(color="#1f77b4"),
     ))
     fin_pronost = hoy
     if not pronost.empty:
@@ -270,8 +278,8 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
         fig.add_trace(go.Scatter(
             x=pronost["date"], y=pronost["indice_oviposicion"],
             mode="lines+markers", name="Pronosticado (CFS, 14 días)",
-            line=dict(color="#1f77b4", dash="dash", width=2.5),
-            marker=dict(size=4),
+            line=dict(color="#e07b39", width=2.5),
+            marker=dict(size=4, color="#e07b39"),
         ))
     fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
     inicio = (hoy - pd.Timedelta(days=dias_atras)) if dias_atras else df_ovip["date"].min()
@@ -320,8 +328,32 @@ with tab_panel:
     if not semanas:
         st.warning("No hay semanas procesadas para esta localidad todavía.")
         st.stop()
+
+    # Semana: selectbox arriba + barra de tiempo junto al mapa, ambos
+    # controlan el mismo valor (session_state) para poder elegir una fecha
+    # exacta o simplemente arrastrar. Se guarda por localidad para no
+    # perder la semana elegida al ir y volver entre localidades.
+    ESTADO_SEMANA_KEY = f"semana_actual_{gid}"
+    if st.session_state.get(ESTADO_SEMANA_KEY) not in semanas:
+        st.session_state[ESTADO_SEMANA_KEY] = semanas[0]
+
+    def _semana_desde_selectbox():
+        valor = st.session_state[f"{ESTADO_SEMANA_KEY}_select"]
+        st.session_state[ESTADO_SEMANA_KEY] = valor
+        st.session_state[f"{ESTADO_SEMANA_KEY}_slider"] = valor
+
+    def _semana_desde_slider():
+        valor = st.session_state[f"{ESTADO_SEMANA_KEY}_slider"]
+        st.session_state[ESTADO_SEMANA_KEY] = valor
+        st.session_state[f"{ESTADO_SEMANA_KEY}_select"] = valor
+
     with col_sel_sem:
-        semana = st.selectbox("Semana (fecha de fin)", options=semanas, index=0)
+        st.selectbox(
+            "Semana (fecha de fin)", options=semanas,
+            index=semanas.index(st.session_state[ESTADO_SEMANA_KEY]),
+            key=f"{ESTADO_SEMANA_KEY}_select", on_change=_semana_desde_selectbox,
+        )
+    semana = st.session_state[ESTADO_SEMANA_KEY]
 
     nombre = GID_NOMBRE[gid]
 
@@ -336,6 +368,15 @@ with tab_panel:
     col_mapa, col_ovip = st.columns([3, 2])
 
     with col_mapa:
+        st.markdown("**Índice de actividad**")
+
+        semanas_cronologico = list(reversed(semanas))
+        st.select_slider(
+            "Recorrer semanas", options=semanas_cronologico,
+            value=semana, key=f"{ESTADO_SEMANA_KEY}_slider",
+            on_change=_semana_desde_slider, label_visibility="collapsed",
+        )
+
         centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
 
         m = folium.Map(location=centro, tiles=None)
@@ -430,7 +471,7 @@ with tab_panel:
             )
             st.plotly_chart(figura_animada_indice_actividad(gid), use_container_width=True)
 
-    with st.expander("Serie meteorológica cruda (precipitación, temperatura, humedad)"):
+    with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
         if df_met is None:
             st.info("Sin datos meteorológicos para esta localidad.")
