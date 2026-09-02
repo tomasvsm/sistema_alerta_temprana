@@ -449,7 +449,13 @@ with tab_panel:
     col_mapa, col_ovip = st.columns([3, 2])
 
     with col_mapa:
-        st.markdown("**Índice de actividad**")
+        referencias = " · ".join(
+            f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
+            for c, cat in zip(PALETA, CATEGORIAS)
+        )
+        st.markdown(
+            f"**Índice de actividad** ({referencias})", unsafe_allow_html=True
+        )
 
         semanas_cronologico = list(reversed(semanas))
         st.select_slider(
@@ -500,10 +506,6 @@ with tab_panel:
         m.fit_bounds(bounds)
         st_folium(m, height=460, use_container_width=True, returned_objects=[])
 
-        leyenda = " · ".join(
-            f'<span style="color:{c}">■</span> {cat}' for c, cat in zip(PALETA, CATEGORIAS)
-        )
-        st.markdown(leyenda, unsafe_allow_html=True)
         st.caption(
             f"Umbral de Youden de esta localidad: {YOUDEN[gid]:.4f} "
             "(calibrado contra datos de ovitrampas)."
