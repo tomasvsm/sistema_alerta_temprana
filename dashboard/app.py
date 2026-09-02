@@ -130,15 +130,15 @@ def semaforo_html(codigo_activo: int) -> str:
                 f"border:2px solid {color};"
             )
         pills.append(
-            f'<div style="{estilo} flex:1; text-align:center; padding:5px 4px; '
-            f'border-radius:8px; font-size:0.82rem;">{etiqueta}</div>'
+            f'<div style="{estilo} flex:1; text-align:center; padding:8px 4px; '
+            f'border-radius:8px; font-size:0.85rem;">{etiqueta}</div>'
         )
     filas = "".join(pills)
     return (
         '<div style="border:1px solid rgba(128,128,128,0.35); border-radius:10px; '
-        'padding:6px 14px 7px 14px; margin:4px 0 6px 0;">'
-        '<div style="font-size:0.68rem; text-transform:uppercase; letter-spacing:0.04em; '
-        'opacity:0.65; margin-bottom:4px;">Nivel de actividad de esta semana</div>'
+        'padding:10px 14px 12px 14px; margin:8px 0 12px 0;">'
+        '<div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
+        'opacity:0.65; margin-bottom:8px;">Nivel de actividad de esta semana</div>'
         f'<div style="display:flex; gap:6px;">{filas}</div>'
         "</div>"
     )
@@ -326,7 +326,7 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
     inicio = (hoy - pd.Timedelta(days=dias_atras)) if dias_atras else df_ovip["date"].min()
     fig.update_layout(
         title=titulo, yaxis_range=[0, 1], yaxis_title="Índice (0-1)",
-        xaxis_title=None, height=height, margin=dict(t=35, b=10, l=10, r=10),
+        xaxis_title=None, height=height, margin=dict(t=50, b=10, l=10, r=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
         xaxis_range=[inicio, fin_pronost + pd.Timedelta(days=3)],
         xaxis=dict(tickformat="%Y-%m"),
@@ -344,16 +344,7 @@ def cargar_estado_orquestador() -> dict | None:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="Alerta temprana Aedes aegypti", layout="wide")
 st.markdown(
-    """<style>
-    header[data-testid="stHeader"] { display: none; }
-    .block-container { padding-top: 0.5rem; padding-bottom: 0.5rem; }
-    div[data-testid="stMarkdownContainer"] > h2 { margin: 0 0 0.1rem 0; }
-    div[data-testid="stMarkdownContainer"] > h3 { margin: 0.1rem 0 0.15rem 0; }
-    div[data-testid="stVerticalBlock"] { gap: 0.4rem; }
-    div[data-testid="stTabs"] { margin-bottom: -0.5rem; }
-    div[data-testid="stElementToolbar"] { display: none; }
-    </style>""",
-    unsafe_allow_html=True,
+    "<style>.block-container { padding-top: 2rem; }</style>", unsafe_allow_html=True
 )
 
 estado = cargar_estado_orquestador()
@@ -365,7 +356,7 @@ if estado and estado.get("hubo_error"):
         f"en esas etapas. Log: `{estado['log']}`"
     )
 
-st.markdown("## Sistema de alerta temprana de actividad de *Aedes aegypti*")
+st.title("Sistema de alerta temprana de actividad de *Aedes aegypti*")
 
 tab_panel, tab_acerca = st.tabs(["Panel", "Acerca de"])
 
@@ -413,7 +404,7 @@ with tab_panel:
     arr_ia, bounds = cargar_raster_4326(str(ia_path))
     codigo_activo = codigo_categoria_maxima(gid, arr_ia)
 
-    st.markdown(f"### {nombre}: semana finalizada el {semana}")
+    st.subheader(f"{nombre}: semana finalizada el {semana}")
     st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
 
     col_mapa, col_ovip = st.columns([3, 2])
@@ -468,7 +459,7 @@ with tab_panel:
 
         folium.LayerControl(collapsed=True).add_to(m)
         m.fit_bounds(bounds)
-        st_folium(m, height=230, use_container_width=True, returned_objects=[])
+        st_folium(m, height=480, use_container_width=True, returned_objects=[])
 
         leyenda = " · ".join(
             f'<span style="color:{c}">■</span> {cat}' for c, cat in zip(PALETA, CATEGORIAS)
@@ -487,14 +478,14 @@ with tab_panel:
             st.plotly_chart(
                 fig_indice_oviposicion(
                     df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
-                    dias_atras=90, height=150,
+                    dias_atras=90, height=230,
                 ),
                 use_container_width=True,
             )
             st.plotly_chart(
                 fig_indice_oviposicion(
                     df_ovip, "Índice de oviposición: serie completa",
-                    dias_atras=None, height=150,
+                    dias_atras=None, height=230,
                 ),
                 use_container_width=True,
             )
