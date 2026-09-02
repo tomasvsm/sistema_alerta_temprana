@@ -143,9 +143,9 @@ def semaforo_html(codigo_activo: int) -> str:
         'style="flex-shrink:0;">'
         '<rect x="7" y="1" width="10" height="22" rx="4" stroke="currentColor" '
         'stroke-width="1.6"/>'
-        '<circle cx="12" cy="6.5" r="2" fill="currentColor"/>'
-        '<circle cx="12" cy="12" r="2" fill="currentColor"/>'
-        '<circle cx="12" cy="17.5" r="2" fill="currentColor"/>'
+        '<circle cx="12" cy="6.5" r="2" fill="#d7191c"/>'
+        '<circle cx="12" cy="12" r="2" fill="#e0c23a"/>'
+        '<circle cx="12" cy="17.5" r="2" fill="#2b9e4a"/>'
         '</svg>'
         "Nivel de actividad de esta semana</div>"
         f'<div style="display:flex; gap:6px;">{filas}</div>'
