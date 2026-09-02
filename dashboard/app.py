@@ -368,7 +368,11 @@ def cargar_estado_orquestador() -> dict | None:
 # --------------------------------------------------------------------------
 st.set_page_config(page_title="Alerta temprana Aedes aegypti", layout="wide")
 st.markdown(
-    "<style>.block-container { padding-top: 2rem; }</style>", unsafe_allow_html=True
+    """<style>
+    header[data-testid="stHeader"] { display: none; }
+    .block-container { padding-top: 1.5rem; }
+    </style>""",
+    unsafe_allow_html=True,
 )
 
 estado = cargar_estado_orquestador()
@@ -483,7 +487,7 @@ with tab_panel:
 
         folium.LayerControl(collapsed=True).add_to(m)
         m.fit_bounds(bounds)
-        st_folium(m, height=480, use_container_width=True, returned_objects=[])
+        st_folium(m, height=460, use_container_width=True, returned_objects=[])
 
         leyenda = " · ".join(
             f'<span style="color:{c}">■</span> {cat}' for c, cat in zip(PALETA, CATEGORIAS)
