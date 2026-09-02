@@ -302,6 +302,18 @@ def cargar_serie_meteorologica(gid: str) -> pd.DataFrame | None:
     return df[["date", "precipitations", "temperature", "rh"]]
 
 
+# Formato de fecha de los ejes X: numerico puro (nada de "Jan"/"Aug" en
+# ingles) y adaptativo segun el zoom -- dia/mes cuando se distinguen
+# semanas individuales, mes/año o solo año cuando la serie abarca varios
+# años (un tickformat fijo tipo "%Y-%m" repite la misma etiqueta para
+# varias semanas del mismo mes y no deja ver de que semana se trata).
+TICKFORMATSTOPS_FECHA = [
+    dict(dtickrange=[None, "M1"], value="%d/%m/%y"),
+    dict(dtickrange=["M1", "M12"], value="%m/%Y"),
+    dict(dtickrange=["M12", None], value="%Y"),
+]
+
+
 def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int | None, height: int) -> go.Figure:
     """dias_atras=None -> serie completa disponible, sin recortar."""
     hoy = pd.Timestamp(date.today())
@@ -325,11 +337,14 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
     fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
     inicio = (hoy - pd.Timedelta(days=dias_atras)) if dias_atras else df_ovip["date"].min()
     fig.update_layout(
-        title=titulo, yaxis_range=[0, 1], yaxis_title="Índice (0-1)",
-        xaxis_title=None, height=height, margin=dict(t=50, b=10, l=10, r=10),
+        title=titulo, xaxis_title=None, height=height,
+        margin=dict(t=50, b=10, l=10, r=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
         xaxis_range=[inicio, fin_pronost + pd.Timedelta(days=3)],
-        xaxis=dict(tickformat="%Y-%m"),
+        xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
+        # rango hasta 1.1 para que los valores cercanos a 1 no queden
+        # pegados/cortados contra el borde superior; el tick sigue en 1.
+        yaxis=dict(title="Índice (0-1)", range=[0, 1.1], dtick=0.5),
     )
     return fig
 
@@ -509,7 +524,7 @@ with tab_panel:
                 height=280, margin=dict(t=30, b=10, l=10, r=10),
                 yaxis_title="Índice de actividad", xaxis_title=None,
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
-                xaxis=dict(tickformat="%Y-%m"),
+                xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
             )
             st.plotly_chart(fig_serie, use_container_width=True)
 
