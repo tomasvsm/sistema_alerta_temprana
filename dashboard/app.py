@@ -147,7 +147,7 @@ def semaforo_html(codigo_activo: int) -> str:
         'padding:8px 12px 10px 12px; margin:0 0 6px 0;">'
         '<div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
         'opacity:0.65; margin-bottom:6px; display:flex; align-items:center; gap:5px;">'
-        '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" '
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" '
         'style="flex-shrink:0;">'
         '<rect x="7" y="1" width="10" height="22" rx="4" stroke="currentColor" '
         'stroke-width="1.6"/>'
