@@ -135,7 +135,7 @@ def semaforo_html(codigo_activo: int) -> str:
             # es tan ilegible como texto blanco sobre ese mismo color.
             estilo = (
                 f"background:{_hex_con_alpha(color, 0.07)}; color:#6b6b6b; "
-                f"font-weight:500; border:2px solid {color};"
+                f"font-weight:500; border:2px solid {_hex_con_alpha(color, 0.35)};"
             )
         pills.append(
             f'<div style="{estilo} text-align:center; padding:6px 4px; '
