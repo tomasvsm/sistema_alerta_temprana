@@ -599,46 +599,88 @@ with tab_acerca:
     st.header("Acerca de este sistema")
     st.markdown(
         """
-Sistema de alerta temprana para *Aedes aegypti*, vector del dengue, en
-cuatro localidades de Córdoba (Argentina): Córdoba capital, Río Cuarto,
-Villa María y Salsipuedes. Desarrollado en el marco de una tesis doctoral.
+Este sistema estima, semana a semana, dónde y cuánto riesgo de
+transmisión de dengue plantea *Aedes aegypti* en cuatro localidades de
+Córdoba: Córdoba capital, Río Cuarto, Villa María y Salsipuedes. Es parte
+de una tesis doctoral; el código completo (procesamiento, modelo y este
+mismo dashboard) está en
+[github.com/tomasvsm/sistema_alerta_temprana](https://github.com/tomasvsm/sistema_alerta_temprana).
 
-**Índice de actividad**: combina dos modelos independientes:
+### Cómo se calcula el índice de actividad
 
-- **Modelo temporal** (dinámica poblacional de Aedes aegypti, modelo de
-  Otero/Aguirre): a partir de datos meteorológicos (precipitación IMERG,
-  temperatura y humedad GDAS/FNL), estima la dinámica de huevos, larvas,
-  pupas y adultos, y de ahí un **índice de oviposición** diario,
-  estandarizado (0-1) contra una ventana móvil de 365 días.
-- **Modelo espacial** (MCDA: análisis multicriterio): combina NDVI
-  (vegetación, Sentinel-2), densidad de construcciones, población y NBI
-  (necesidades básicas insatisfechas) en un índice de **idoneidad de
-  hábitat** semanal por píxel.
+El índice combina dos modelos que se calculan por separado y después se
+multiplican entre sí.
 
-El índice de actividad final es el producto de ambos:
-`índice de actividad = idoneidad espacial × índice de oviposición`.
+**1. Modelo temporal (dinámica poblacional).** Es una implementación del
+modelo de Aguirre
+([Aguirre et al., 2021](https://doi.org/10.1016/j.ecoinf.2021.101351)):
+un sistema de ecuaciones diferenciales con compartimentos de huevo, larva,
+pupa y adulto, forzado día a día por precipitación, temperatura y humedad
+relativa. De la salida diaria del modelo (tasa de oviposición) se arma el
+**índice de oviposición**: cada valor se estandariza entre 0 y 1 contra
+una ventana móvil de los 365 días previos, de modo que el índice mide qué
+tan alta es la oviposición de hoy *en relación al último año en ese mismo
+lugar*, no en términos absolutos.
 
-**Clasificación categórica**: los mapas usan 4 categorías (baja, media,
-alta, muy alta) calibradas contra datos de ovitrampas de cada localidad,
-mediante el umbral de Youden propio de cada una (no una escala global).
+**2. Modelo espacial (MCDA, análisis multicriterio).** Combina cuatro
+capas raster semanales, procesadas en GRASS GIS (proyección POSGAR 2007 /
+Argentina 4, EPSG:5346): NDVI de vegetación (Sentinel-2), densidad de
+construcciones, población y NBI (necesidades básicas insatisfechas). El
+resultado es un raster de **idoneidad de hábitat**: qué tan favorable es
+cada píxel para que el mosquito complete su ciclo, independientemente de
+si hay huevos siendo puestos esa semana o no.
 
-**Proyección a futuro**: el índice de oviposición se actualiza
-semanalmente e incorpora pronóstico meteorológico (CFS, NOAA) a 14 días.
-El índice de actividad espacial, en cambio, depende de imágenes satelitales
-reales y por lo tanto es siempre retrospectivo: no se proyecta a futuro.
+**Índice de actividad final**, por píxel y por semana:
 
-**Actualización**: el sistema corre automáticamente todos los martes
-(ver `orquestador/`), re-descargando clima, re-corriendo el modelo
-temporal, incorporando la semana de vegetación más reciente disponible por
-satélite, y recalculando el índice de actividad.
+`índice de actividad = idoneidad espacial × índice de oviposición diario`
+(promediado sobre los 7 días de la semana; el desvío intra-semanal queda
+disponible como capa de error, σ, en el mapa).
 
-**Fuentes de datos**
-- Precipitación: NASA GES DISC, GPM IMERG Late (diario, 0.1°)
-- Temperatura / humedad: NCEP GDAS/FNL (vía NCAR GDEX)
-- Pronóstico: NOAA CFS (vía NOMADS)
-- Vegetación: Copernicus Sentinel-2 L2A (NDVI, vía EODAG)
-- Población / NBI / construcciones: WorldPop, INDEC, Open Buildings
-- Mapas base: Esri World Light Gray Canvas (HERE, Garmin, FAO, NOAA, USGS)
-  y Esri World Imagery (Maxar, Earthstar Geographics)
+### Clasificación en 4 categorías
+
+Los mapas no muestran el índice crudo (0 a 1) sino 4 categorías (baja,
+media, alta, muy alta), calibradas con datos reales de ovitrampas de cada
+localidad, no con una escala arbitraria: el piso de "media" es el umbral
+de Youden propio de esa localidad (el punto de corte que mejor separa
+positivo/negativo en la curva ROC contra las ovitrampas), y los cortes
+entre media/alta/muy alta son los terciles de los valores reales de
+ovitrampa que superan ese umbral. Por eso el mismo valor de índice puede
+caer en una categoría distinta según la localidad.
+
+### Qué se proyecta a futuro y qué no
+
+El índice de oviposición incorpora pronóstico meteorológico (NOAA CFS, 14
+días) además del dato observado, así que su gráfico muestra un tramo a
+futuro. El índice de actividad espacial, en cambio, depende de imágenes
+satelitales reales (no hay forma de "pronosticar" una imagen Sentinel-2),
+así que es siempre retrospectivo: la semana más reciente que se muestra es
+siempre una semana ya transcurrida.
+
+### Actualización automática
+
+Todos los martes (`orquestador/`) el sistema re-descarga clima,
+re-corre el modelo temporal, incorpora la semana de vegetación más
+reciente que haya disponible por satélite, y recalcula MCDA e índice de
+actividad. Si algún paso falla esa semana, el resto de la cadena sigue
+corriendo igual con lo que haya disponible, y el dashboard avisa arriba de
+todo si algo quedó desactualizado.
+
+### Fuentes de datos
+
+- **Precipitación**: NASA GES DISC,
+  [GPM IMERG Late](https://gpm.nasa.gov/data/imerg) (diario, 0.1°)
+- **Temperatura / humedad**: [NCEP](https://www.ncep.noaa.gov/) GDAS/FNL
+- **Pronóstico**: NOAA CFS, vía
+  [NOMADS](https://nomads.ncep.noaa.gov/)
+- **Vegetación**: [Copernicus Sentinel-2](https://dataspace.copernicus.eu/)
+  L2A (NDVI), descargado con
+  [EODAG](https://github.com/CS-SI/eodag)
+- **Población**: [WorldPop](https://www.worldpop.org/)
+- **NBI**: [INDEC](https://www.indec.gob.ar/)
+- **Construcciones**: [Open Buildings](https://sites.research.google/gr/open-buildings/)
+  (Google)
+- **Mapas base**: [Esri](https://www.arcgis.com/) World Light Gray Canvas
+  (HERE, Garmin, FAO, NOAA, USGS) y Esri World Imagery (Maxar, Earthstar
+  Geographics)
         """
     )
