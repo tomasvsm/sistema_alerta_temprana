@@ -134,8 +134,8 @@ def semaforo_html(codigo_activo: int) -> str:
             # categoria): un color palido como texto sobre fondo blanco
             # es tan ilegible como texto blanco sobre ese mismo color.
             estilo = (
-                f"background:{_hex_con_alpha(color, 0.07)}; color:#6b6b6b; "
-                f"font-weight:500; border:2px solid {_hex_con_alpha(color, 0.35)};"
+                f"background:{_hex_con_alpha(color, 0.035)}; color:rgba(107,107,107,0.55); "
+                f"font-weight:500; border:1.5px solid {_hex_con_alpha(color, 0.18)};"
             )
         pills.append(
             f'<div style="{estilo} text-align:center; padding:6px 4px; '
@@ -435,8 +435,6 @@ with tab_panel:
         )
     semana = st.session_state[ESTADO_SEMANA_KEY]
 
-    nombre = GID_NOMBRE[gid]
-
     ia_path = IA_DIR / f"{semana}_{gid}_indice_actividad.tif"
     sigma_path = IA_DIR / f"{semana}_{gid}_sigma.tif"
     arr_ia, bounds = cargar_raster_4326(str(ia_path))
@@ -444,8 +442,6 @@ with tab_panel:
 
     with col_semaforo:
         st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
-
-    st.subheader(f"{nombre}: {semana}")
 
     col_mapa, col_ovip = st.columns([3, 2])
 
