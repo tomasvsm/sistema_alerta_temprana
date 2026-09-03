@@ -82,6 +82,13 @@ TERCILES_CAMPO = {
 PALETA = ["#2b83ba", "#83c1ab", "#e0f3b5", "#d7191c"]
 CATEGORIAS = ["Actividad baja", "Actividad media", "Actividad alta", "Actividad muy alta"]
 
+# Techo fijo de la escala de la capa de error (sigma): tiene que ser el
+# mismo en todas las semanas para que los colores sean comparables entre
+# si (si se recalculara por raster, la misma sigma real se veria distinta
+# segun la semana). 0.15 cubre comodo el maximo real observado en los 244
+# rasters de sigma existentes (0.129).
+VMAX_SIGMA = 0.15
+
 
 def bounds_categoricos(gid: str) -> list[float]:
     q33, q66 = TERCILES_CAMPO[gid]
@@ -140,7 +147,7 @@ class ControlRecentrar(MacroElement):
                         '</svg>';
                     btn.title = 'Volver a la vista inicial';
                     btn.style.cssText = 'width:30px;height:30px;cursor:pointer;' +
-                        'background:white;border:none;display:flex;align-items:center;' +
+                        'background:white;display:flex;align-items:center;' +
                         'justify-content:center;';
                     L.DomEvent.on(btn, 'click', function(e) {
                         L.DomEvent.stopPropagation(e);
@@ -150,6 +157,20 @@ class ControlRecentrar(MacroElement):
                 },
             });
             mapa.addControl(new ControlBtn());
+
+            // Cuando .block-container se achica para @media print, el
+            // iframe del mapa tambien se achica (eso si pasa solo, es CSS
+            // normal) -- pero Leaflet no se entera solo: sin invalidateSize
+            // sigue posicionando los tiles con las cuentas del tamaño
+            // viejo, y el mapa queda mostrado a medias / corrido. Este
+            // window es el de adentro del iframe del propio mapa (no el
+            // de la app), pero beforeprint/matchMedia print igual llegan
+            // aca porque el iframe forma parte del mismo trabajo de
+            // impresion que la pagina que lo contiene.
+            window.matchMedia('print').addEventListener('change', function() {
+                mapa.invalidateSize();
+            });
+            window.addEventListener('beforeprint', function() { mapa.invalidateSize(); });
         })();
         {% endmacro %}
     """)
@@ -318,8 +339,7 @@ def contorno_roi_4326(path: str) -> list[list[list[float]]]:
 
 def raster_a_imagen_rgba(arr: np.ndarray, gid: str | None, cmap_continuo: bool) -> np.ndarray:
     if cmap_continuo:
-        vmax = float(np.nanmax(arr)) if np.any(~np.isnan(arr)) else 1.0
-        norm = mcolors.Normalize(vmin=0, vmax=vmax if vmax > 0 else 1.0)
+        norm = mcolors.Normalize(vmin=0, vmax=VMAX_SIGMA)
         cmap = mcolors.LinearSegmentedColormap.from_list(
             "sigma", ["#ffffff", "#d4b9da", "#c994c7", "#df65b0", "#67001f"]
         )
@@ -396,7 +416,8 @@ def figura_animada_indice_actividad(gid: str) -> go.Figure:
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        coloraxis_showscale=False, height=420, margin=dict(t=10, b=10, l=10, r=10),
+        coloraxis_showscale=False, height=420, width=490,
+        margin=dict(t=10, b=10, l=10, r=10),
     )
     for i, frame in enumerate(fig.frames):
         frame.name = fechas[i]
@@ -445,7 +466,16 @@ TICKFORMATSTOPS_FECHA = [
 
 
 def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int | None, height: int) -> go.Figure:
-    """dias_atras=None -> serie completa disponible, sin recortar."""
+    """dias_atras=None -> serie completa disponible, sin recortar.
+
+    Ancho fijo (no use_container_width): un grafico Plotly con ancho
+    responsive queda dibujado, en el SVG, al ancho en pixeles que tenia
+    en pantalla al momento de renderizarse -- y no hay forma confiable de
+    hacer que se redibuje mas angosto a tiempo para la instancia final de
+    impresion (ni CSS ni JS enganchado a matchMedia/beforeprint llega a
+    tiempo de forma consistente, probado a fondo). Ancho fijo en Python
+    es la unica garantia real: el mismo tamaño en pantalla y en el papel,
+    sin depender de ningun redibujado en el momento de imprimir."""
     hoy = pd.Timestamp(date.today())
     real = df_ovip[df_ovip["date"] <= hoy]
     pronost = df_ovip[df_ovip["date"] >= hoy]
@@ -467,7 +497,7 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
     fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
     inicio = (hoy - pd.Timedelta(days=dias_atras)) if dias_atras else df_ovip["date"].min()
     fig.update_layout(
-        title=titulo, xaxis_title=None, height=height,
+        title=titulo, xaxis_title=None, height=height, width=480,
         margin=dict(t=50, b=10, l=10, r=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
         xaxis_range=[inicio, fin_pronost + pd.Timedelta(days=3)],
@@ -569,12 +599,12 @@ st.markdown(
 # sin tocar los que el usuario ya tenia abiertos por su cuenta.
 components.html(
     """<script>
-    window.parent.matchMedia('print').addEventListener('change', function(e) {
+    function prepararImpresion(activar) {
         var detalles = window.parent.document.querySelectorAll('[data-testid="stExpanderDetails"]');
         detalles.forEach(function(det) {
             var details = det.closest('details');
             if (!details) return;
-            if (e.matches) {
+            if (activar) {
                 if (det.hasAttribute('inert') && !details.hasAttribute('open')) {
                     det.setAttribute('data-reabierto-para-imprimir', '1');
                     det.removeAttribute('inert');
@@ -586,7 +616,25 @@ components.html(
                 details.removeAttribute('open');
             }
         });
+        if (!activar) return;
+        // El CSS de @media print SI achica .block-container (confirmado),
+        // pero Plotly dibuja el SVG de cada grafico con el ancho en pixeles
+        // que tenia la columna en pantalla y no hay redibujado automatico
+        // -- forzarlo a mano. beforeprint (ademas de matchMedia) porque
+        // segun el motor de impresion uno de los dos puede no llegar a
+        // tiempo antes de que se capture la pagina (probado: con
+        // Page.printToPDF de Chromium/Playwright, matchMedia solo a veces
+        // no alcanzaba).
+        var graficos = window.parent.document.querySelectorAll('.js-plotly-plot');
+        graficos.forEach(function(gd) {
+            if (window.parent.Plotly) { window.parent.Plotly.Plots.resize(gd); }
+        });
+    }
+    window.parent.matchMedia('print').addEventListener('change', function(e) {
+        prepararImpresion(e.matches);
     });
+    window.parent.addEventListener('beforeprint', function() { prepararImpresion(true); });
+    window.parent.addEventListener('afterprint', function() { prepararImpresion(false); });
     </script>""",
     height=0,
 )
@@ -707,8 +755,7 @@ with tab_panel:
                 show=False,
             )
             capa_sigma.add_to(m)
-            vmax_sigma = float(np.nanmax(arr_sigma)) if np.any(~np.isnan(arr_sigma)) else 1.0
-            LeyendaError(vmax_sigma, nombre_capa_sigma).add_to(m)
+            LeyendaError(VMAX_SIGMA, nombre_capa_sigma).add_to(m)
 
         folium.LayerControl(collapsed=True).add_to(m)
         m.fit_bounds(bounds)
@@ -732,7 +779,6 @@ with tab_panel:
                     df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
                     dias_atras=90, height=270,
                 ),
-                use_container_width=True,
             )
             desde = df_ovip["date"].min().strftime("%Y-%m-%d")
             st.plotly_chart(
@@ -740,7 +786,6 @@ with tab_panel:
                     df_ovip, f"Índice de oviposición: desde {desde}",
                     dias_atras=None, height=270,
                 ),
-                use_container_width=True,
             )
 
     with st.expander("Evolución del índice de actividad (serie temporal y mapas animados)"):
@@ -759,7 +804,7 @@ with tab_panel:
                 line=dict(color="#d7191c", dash="dot", width=1),
             ))
             fig_serie.update_layout(
-                height=420, margin=dict(t=30, b=10, l=10, r=10),
+                height=420, width=490, margin=dict(t=30, b=10, l=10, r=10),
                 yaxis_title="Índice de actividad", xaxis_title=None,
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
                 xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
@@ -767,13 +812,13 @@ with tab_panel:
 
             col_evol_serie, col_evol_mapa = st.columns(2)
             with col_evol_serie:
-                st.plotly_chart(fig_serie, use_container_width=True)
+                st.plotly_chart(fig_serie)
             with col_evol_mapa:
                 st.caption(
                     "Arrastrá el control para ver cualquier semana disponible, o tocá "
                     "Play para recorrerlas todas."
                 )
-                st.plotly_chart(figura_animada_indice_actividad(gid), use_container_width=True)
+                st.plotly_chart(figura_animada_indice_actividad(gid))
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
@@ -798,7 +843,7 @@ with tab_panel:
             ))
             fig_met.add_vline(x=hoy, line_dash="dot", line_color="gray")
             fig_met.update_layout(
-                height=350, margin=dict(t=50, b=10, l=10, r=10),
+                height=350, width=1000, margin=dict(t=50, b=10, l=10, r=10),
                 yaxis=dict(title="Precipitación (mm)"),
                 yaxis2=dict(title="°C / %", overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
@@ -810,7 +855,7 @@ with tab_panel:
                     range=[hoy - pd.Timedelta(days=365), hoy],
                 ),
             )
-            st.plotly_chart(fig_met, use_container_width=True)
+            st.plotly_chart(fig_met)
 
     st.divider()
     st.markdown(footer_html(), unsafe_allow_html=True)
