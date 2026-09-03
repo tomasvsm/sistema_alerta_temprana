@@ -416,7 +416,7 @@ def figura_animada_indice_actividad(gid: str) -> go.Figure:
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        coloraxis_showscale=False, height=420, width=490,
+        coloraxis_showscale=False, height=420,
         margin=dict(t=10, b=10, l=10, r=10),
     )
     for i, frame in enumerate(fig.frames):
@@ -497,7 +497,7 @@ def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int |
     fig.add_vline(x=hoy, line_dash="dot", line_color="gray")
     inicio = (hoy - pd.Timedelta(days=dias_atras)) if dias_atras else df_ovip["date"].min()
     fig.update_layout(
-        title=titulo, xaxis_title=None, height=height, width=480,
+        title=titulo, xaxis_title=None, height=height,
         margin=dict(t=50, b=10, l=10, r=10),
         legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
         xaxis_range=[inicio, fin_pronost + pd.Timedelta(days=3)],
@@ -779,6 +779,7 @@ with tab_panel:
                     df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
                     dias_atras=90, height=270,
                 ),
+                width=400,
             )
             desde = df_ovip["date"].min().strftime("%Y-%m-%d")
             st.plotly_chart(
@@ -786,6 +787,7 @@ with tab_panel:
                     df_ovip, f"Índice de oviposición: desde {desde}",
                     dias_atras=None, height=270,
                 ),
+                width=400,
             )
 
     with st.expander("Evolución del índice de actividad (serie temporal y mapas animados)"):
@@ -804,7 +806,7 @@ with tab_panel:
                 line=dict(color="#d7191c", dash="dot", width=1),
             ))
             fig_serie.update_layout(
-                height=420, width=490, margin=dict(t=30, b=10, l=10, r=10),
+                height=420, margin=dict(t=30, b=10, l=10, r=10),
                 yaxis_title="Índice de actividad", xaxis_title=None,
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
                 xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
@@ -812,13 +814,13 @@ with tab_panel:
 
             col_evol_serie, col_evol_mapa = st.columns(2)
             with col_evol_serie:
-                st.plotly_chart(fig_serie)
+                st.plotly_chart(fig_serie, width=460)
             with col_evol_mapa:
                 st.caption(
                     "Arrastrá el control para ver cualquier semana disponible, o tocá "
                     "Play para recorrerlas todas."
                 )
-                st.plotly_chart(figura_animada_indice_actividad(gid))
+                st.plotly_chart(figura_animada_indice_actividad(gid), width=460)
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
@@ -843,7 +845,7 @@ with tab_panel:
             ))
             fig_met.add_vline(x=hoy, line_dash="dot", line_color="gray")
             fig_met.update_layout(
-                height=350, width=1000, margin=dict(t=50, b=10, l=10, r=10),
+                height=350, margin=dict(t=50, b=10, l=10, r=10),
                 yaxis=dict(title="Precipitación (mm)"),
                 yaxis2=dict(title="°C / %", overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
@@ -855,7 +857,7 @@ with tab_panel:
                     range=[hoy - pd.Timedelta(days=365), hoy],
                 ),
             )
-            st.plotly_chart(fig_met)
+            st.plotly_chart(fig_met, width=950)
 
     st.divider()
     st.markdown(footer_html(), unsafe_allow_html=True)
