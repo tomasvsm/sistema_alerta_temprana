@@ -487,9 +487,24 @@ def cargar_variable_estatica(gid: str, variable: str) -> np.ndarray | None:
     return cargar_raster_nativo(str(ruta))
 
 
-def leyenda_categorica_html(etiquetas: list[str]) -> str:
-    return " · ".join(
-        f'<span style="color:{c}">■</span> {e}' for c, e in zip(PALETA_VIRIDIS5, etiquetas)
+def caja_leyenda_html(titulo: str, colores: list[str], etiquetas: list[str]) -> str:
+    """Recuadro de referencia con titulo y una fila por categoria (cuadrado
+    de color + texto) -- mismo estilo que las leyendas de
+    manuscrito/figuras/variables*.png, en vez de un listado de texto
+    suelto."""
+    filas = "".join(
+        '<div style="display:flex; align-items:center; gap:6px; margin:2px 0;">'
+        f'<span style="width:12px; height:12px; border-radius:2px; background:{c}; '
+        'display:inline-block; flex-shrink:0;"></span>'
+        f'<span>{e}</span></div>'
+        for c, e in zip(colores, etiquetas)
+    )
+    return (
+        '<div style="border:1px solid rgba(128,128,128,0.35); border-radius:8px; '
+        'padding:8px 12px; display:inline-block; font-size:0.8rem; background:white;">'
+        f'<div style="font-weight:600; margin-bottom:6px; font-size:0.72rem; '
+        f'text-transform:uppercase; letter-spacing:0.03em; opacity:0.7;">{titulo}</div>'
+        f'{filas}</div>'
     )
 
 
@@ -994,20 +1009,20 @@ with tab_panel:
                 st.plotly_chart(figura_animada_indice_actividad(gid), width=465)
 
     with st.expander("Variables espaciales (MCDA)"):
-        referencias_idoneidad = " · ".join(
-            f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
-            for c, cat in zip(PALETA, CATEGORIAS)
-        )
-        st.markdown(
-            f"**Índice de idoneidad de hábitat** ({referencias_idoneidad}) "
-            f"&mdash; semana finalizada el {fmt_fecha(semana)}",
-            unsafe_allow_html=True,
-        )
+        st.markdown(f"**Índice de idoneidad de hábitat** &mdash; semana finalizada el {fmt_fecha(semana)}")
         arr_idoneidad = cargar_idoneidad(gid, semana)
         if arr_idoneidad is None:
             st.info("Sin datos de idoneidad para esta semana.")
         else:
-            st.plotly_chart(figura_idoneidad(gid, arr_idoneidad), width=950)
+            col_idon_mapa, col_idon_leyenda = st.columns([3, 1])
+            with col_idon_mapa:
+                st.plotly_chart(figura_idoneidad(gid, arr_idoneidad), width=720)
+            with col_idon_leyenda:
+                etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
+                st.markdown(
+                    caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
+                    unsafe_allow_html=True,
+                )
 
         st.divider()
 
@@ -1022,23 +1037,24 @@ with tab_panel:
                     st.markdown(f"**{titulo_var}**")
                     st.plotly_chart(figura_categorica_5(arr_var), width=310)
                     st.markdown(
-                        "<br>".join(
-                            f'<span style="color:{c}">■</span> {e}'
-                            for c, e in zip(PALETA_VIRIDIS5, etiquetas_var)
-                        ),
+                        caja_leyenda_html(titulo_var, PALETA_VIRIDIS5, etiquetas_var),
                         unsafe_allow_html=True,
                     )
 
         st.divider()
 
-        st.markdown(
-            f"**Vegetación (NDVI)** ({leyenda_categorica_html(CATEGORIAS_NDVI)})",
-            unsafe_allow_html=True,
-        )
+        st.markdown("**Vegetación (NDVI)**")
         if not vegetacion_disponible(gid):
             st.info("Sin datos de vegetación para esta localidad.")
         else:
-            st.plotly_chart(figura_animada_vegetacion(gid), width=950)
+            col_veg_mapa, col_veg_leyenda = st.columns([3, 1])
+            with col_veg_mapa:
+                st.plotly_chart(figura_animada_vegetacion(gid), width=720)
+            with col_veg_leyenda:
+                st.markdown(
+                    caja_leyenda_html("NDVI", PALETA_VIRIDIS5, CATEGORIAS_NDVI),
+                    unsafe_allow_html=True,
+                )
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
