@@ -466,16 +466,7 @@ TICKFORMATSTOPS_FECHA = [
 
 
 def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int | None, height: int) -> go.Figure:
-    """dias_atras=None -> serie completa disponible, sin recortar.
-
-    Ancho fijo (no use_container_width): un grafico Plotly con ancho
-    responsive queda dibujado, en el SVG, al ancho en pixeles que tenia
-    en pantalla al momento de renderizarse -- y no hay forma confiable de
-    hacer que se redibuje mas angosto a tiempo para la instancia final de
-    impresion (ni CSS ni JS enganchado a matchMedia/beforeprint llega a
-    tiempo de forma consistente, probado a fondo). Ancho fijo en Python
-    es la unica garantia real: el mismo tamaño en pantalla y en el papel,
-    sin depender de ningun redibujado en el momento de imprimir."""
+    """dias_atras=None -> serie completa disponible, sin recortar."""
     hoy = pd.Timestamp(date.today())
     real = df_ovip[df_ovip["date"] <= hoy]
     pronost = df_ovip[df_ovip["date"] >= hoy]
@@ -779,7 +770,7 @@ with tab_panel:
                     df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
                     dias_atras=90, height=270,
                 ),
-                width=400,
+                width="stretch",
             )
             desde = df_ovip["date"].min().strftime("%Y-%m-%d")
             st.plotly_chart(
@@ -787,7 +778,7 @@ with tab_panel:
                     df_ovip, f"Índice de oviposición: desde {desde}",
                     dias_atras=None, height=270,
                 ),
-                width=400,
+                width="stretch",
             )
 
     with st.expander("Evolución del índice de actividad (serie temporal y mapas animados)"):
@@ -814,13 +805,13 @@ with tab_panel:
 
             col_evol_serie, col_evol_mapa = st.columns(2)
             with col_evol_serie:
-                st.plotly_chart(fig_serie, width=460)
+                st.plotly_chart(fig_serie, width="stretch")
             with col_evol_mapa:
                 st.caption(
                     "Arrastrá el control para ver cualquier semana disponible, o tocá "
                     "Play para recorrerlas todas."
                 )
-                st.plotly_chart(figura_animada_indice_actividad(gid), width=460)
+                st.plotly_chart(figura_animada_indice_actividad(gid), width="stretch")
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
@@ -857,7 +848,7 @@ with tab_panel:
                     range=[hoy - pd.Timedelta(days=365), hoy],
                 ),
             )
-            st.plotly_chart(fig_met, width=950)
+            st.plotly_chart(fig_met, width="stretch")
 
     st.divider()
     st.markdown(footer_html(), unsafe_allow_html=True)
