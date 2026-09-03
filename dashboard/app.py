@@ -41,6 +41,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 IA_DIR = REPO_ROOT / "espacializacion" / "output" / "indice_actividad"
 MODELO_DIR = REPO_ROOT / "modelo-temporal" / "output"
 ESTADO_JSON = REPO_ROOT / "orquestador" / "logs" / "estado_ultima_corrida.json"
+ESTATICAS_DIR = REPO_ROOT / "espacializacion" / "estaticas"
+VEGETACION_DIR = REPO_ROOT / "espacializacion" / "data" / "vegetacion"
 
 # Cordoba primero -- es la localidad default al abrir (selectbox sin index
 # explicito toma la primera opcion del dict).
@@ -441,6 +443,99 @@ def figura_animada_indice_actividad(gid: str) -> go.Figure:
     return fig
 
 
+# Rutas fijas de las 3 variables estaticas del MCDA (no cambian semana a
+# semana, una sola por localidad -- ver espacializacion/src/calculo_mcda.py).
+VARIABLES_ESTATICAS = {
+    "construcciones": ("construcciones", "Buildings_cat_100m", "Altura de construcciones"),
+    "poblacion": ("poblacion", "People_100m", "Población"),
+    "nbi": ("socioeconomica", "NBI_100m", "NBI"),
+}
+
+
+@st.cache_data
+def cargar_variable_estatica(gid: str, variable: str) -> np.ndarray | None:
+    subdir, sufijo, _ = VARIABLES_ESTATICAS[variable]
+    ruta = ESTATICAS_DIR / f"gid_{gid}_estaticas" / subdir / f"gid_{gid}_estaticas_{sufijo}.tif"
+    if not ruta.exists():
+        return None
+    return cargar_raster_nativo(str(ruta))
+
+
+def figura_variable_estatica(arr: np.ndarray, titulo: str) -> go.Figure:
+    fig = px.imshow(
+        arr, color_continuous_scale="YlGnBu", range_color=[0, 1], aspect="equal",
+    )
+    fig.update_traces(hoverinfo="skip", hovertemplate=None)
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    fig.update_layout(
+        title=titulo, height=300, coloraxis_showscale=False,
+        margin=dict(t=40, b=10, l=10, r=10),
+    )
+    return fig
+
+
+@st.cache_data
+def vegetacion_disponible(gid: str) -> dict[str, str]:
+    """fecha de fin -> ruta al NDVI categorico de esa semana."""
+    nombre = GID_SNAKE[gid]
+    patron = re.compile(rf"^{nombre}_(\d{{4}}-\d{{2}}-\d{{2}})_(\d{{4}}-\d{{2}}-\d{{2}})_vegetacion$")
+    resultado = {}
+    if not VEGETACION_DIR.is_dir():
+        return resultado
+    for d in VEGETACION_DIR.iterdir():
+        if not d.is_dir():
+            continue
+        m = patron.match(d.name)
+        if not m:
+            continue
+        fecha_fin = m.group(2)
+        tif = d / "outputs" / "final" / f"{d.name}_NDVI_cat_100m.tif"
+        if tif.exists():
+            resultado[fecha_fin] = str(tif)
+    return resultado
+
+
+@st.cache_data
+def stack_vegetacion(gid: str) -> tuple[np.ndarray, list[str]]:
+    disponibles = vegetacion_disponible(gid)
+    fechas = sorted(disponibles.keys())
+    capas = [cargar_raster_nativo(disponibles[f]) for f in fechas]
+    return np.stack(capas), fechas
+
+
+def figura_animada_vegetacion(gid: str) -> go.Figure:
+    stack, fechas = stack_vegetacion(gid)
+    fig = px.imshow(
+        stack, animation_frame=0,
+        color_continuous_scale="YlGn", range_color=[0, 1], aspect="equal",
+    )
+    fig.update_traces(hoverinfo="skip", hovertemplate=None)
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    fig.update_layout(
+        height=420, margin=dict(t=10, b=10, l=10, r=10),
+        coloraxis_colorbar=dict(title="NDVI"),
+    )
+    for i, frame in enumerate(fig.frames):
+        frame.name = fechas[i]
+    slider = fig.layout.sliders[0]
+    nuevos_steps = []
+    for i, step in enumerate(slider.steps):
+        step_dict = step.to_plotly_json()
+        step_dict["label"] = fechas[i]
+        step_dict["args"] = [[fechas[i]], step_dict["args"][1]]
+        nuevos_steps.append(step_dict)
+    slider.steps = nuevos_steps
+    slider.currentvalue = dict(prefix="Semana: ")
+
+    ultimo = len(fig.frames) - 1
+    fig.data[0].z = fig.frames[ultimo].data[0].z
+    slider.active = ultimo
+
+    return fig
+
+
 @st.cache_data
 def cargar_indice_oviposicion(gid: str) -> pd.DataFrame | None:
     nombre = GID_SNAKE[gid]
@@ -829,6 +924,32 @@ with tab_panel:
                     "Play para recorrerlas todas."
                 )
                 st.plotly_chart(figura_animada_indice_actividad(gid), width=465)
+
+    with st.expander("Variables espaciales (MCDA)"):
+        st.caption(
+            "Las cuatro capas que combina el modelo espacial: tres son "
+            "estáticas (no cambian semana a semana), la vegetación se "
+            "actualiza cada semana según la imagen satelital disponible."
+        )
+        col_v1, col_v2, col_v3 = st.columns(3)
+        for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
+            with col:
+                arr_var = cargar_variable_estatica(gid, variable)
+                _, _, titulo_var = VARIABLES_ESTATICAS[variable]
+                if arr_var is None:
+                    st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
+                else:
+                    st.plotly_chart(figura_variable_estatica(arr_var, titulo_var), width=310)
+
+        st.markdown("**Vegetación (NDVI)**")
+        if not vegetacion_disponible(gid):
+            st.info("Sin datos de vegetación para esta localidad.")
+        else:
+            st.caption(
+                "Arrastrá el control para ver cualquier semana disponible, o tocá "
+                "Play para recorrerlas todas."
+            )
+            st.plotly_chart(figura_animada_vegetacion(gid), width=950)
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
