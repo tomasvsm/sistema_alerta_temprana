@@ -29,9 +29,9 @@ import rasterio
 import streamlit as st
 import streamlit.components.v1 as components
 from matplotlib import colors as mcolors
-from rasterio.features import shapes as rio_shapes
+from rasterio.features import geometry_mask as rio_geometry_mask
 from rasterio.vrt import WarpedVRT
-from rasterio.warp import transform as rio_transform
+from rasterio.warp import transform_geom as rio_transform_geom
 from streamlit_folium import st_folium
 import folium
 from folium import MacroElement
@@ -44,6 +44,7 @@ ESTADO_JSON = REPO_ROOT / "orquestador" / "logs" / "estado_ultima_corrida.json"
 ESTATICAS_DIR = REPO_ROOT / "espacializacion" / "estaticas"
 VEGETACION_DIR = REPO_ROOT / "espacializacion" / "data" / "vegetacion"
 MCDA_DIR = REPO_ROOT / "espacializacion" / "output" / "MCDA"
+EJIDOS_PATH = REPO_ROOT / "espacializacion" / "resources" / "ejidos" / "ejidos_4loc.geojson"
 
 # Cordoba primero -- es la localidad default al abrir (selectbox sin index
 # explicito toma la primera opcion del dict).
@@ -314,38 +315,67 @@ def semanas_disponibles(gid: str) -> list[str]:
 
 
 @st.cache_data
-def cargar_raster_4326(path: str):
+def cargar_ejidos() -> dict[str, dict]:
+    """gid -> geometria GeoJSON (EPSG:4326) del limite administrativo real
+    (ejido) de esa localidad -- las ROI usadas para procesar son
+    cuadrados/rectangulos de buffer, pero el limite real es irregular (ver
+    manuscrito/figuras/mapa-localidades-ovis.png), asi que todo raster se
+    enmascara contra este poligono antes de mostrarse."""
+    if not EJIDOS_PATH.exists():
+        return {}
+    with open(EJIDOS_PATH) as f:
+        data = json.load(f)
+    return {feat["properties"]["gid"]: feat["geometry"] for feat in data["features"]}
+
+
+@st.cache_data
+def _mascara_ejido(gid: str, shape: tuple[int, int], transform_coefs: tuple, crs_str: str) -> np.ndarray:
+    """Mascara booleana (True = dentro del ejido) rasterizada al grid
+    puntual de un raster -- no todos los rasters de un mismo gid comparten
+    grid exacto (las estaticas usan uno levemente distinto al del indice
+    de actividad/MCDA/NDVI), asi que se rasteriza por raster."""
+    ejidos = cargar_ejidos()
+    if gid not in ejidos:
+        return np.ones(shape, dtype=bool)
+    geom_local = rio_transform_geom("EPSG:4326", crs_str, ejidos[gid])
+    transform = rasterio.Affine(*transform_coefs)
+    return rio_geometry_mask([geom_local], out_shape=shape, transform=transform, invert=True)
+
+
+def enmascarar_por_ejido(arr: np.ndarray, gid: str, transform, crs) -> np.ndarray:
+    mascara = _mascara_ejido(gid, arr.shape, tuple(transform)[:6], crs.to_string())
+    return np.where(mascara, arr, np.nan)
+
+
+@st.cache_data
+def cargar_raster_4326(path: str, gid: str | None = None):
     """Reproyecta a EPSG:4326 y devuelve (array, bounds) listos para folium."""
     with rasterio.open(path) as src:
         with WarpedVRT(src, crs="EPSG:4326", resampling=rasterio.enums.Resampling.nearest) as vrt:
             arr = vrt.read(1)
             bounds = vrt.bounds
             nodata = vrt.nodata
+            transform = vrt.transform
+            crs = vrt.crs
     arr = np.where(arr == nodata, np.nan, arr)
+    if gid is not None:
+        arr = enmascarar_por_ejido(arr, gid, transform, crs)
     return arr, [[bounds.bottom, bounds.left], [bounds.top, bounds.right]]
 
 
 @st.cache_data
-def contorno_roi_4326(path: str) -> list[list[list[float]]]:
-    """Anillos (exterior + agujeros, ej. nubes enmascaradas) del limite del
-    ejido/ROI, trazados directo desde la mascara de nodata del propio
-    raster y reproyectados a EPSG:4326 -- para dibujar un borde prolijo
-    en vez de dejar los bordes de pixel crudos contra el mapa base
-    (mismo criterio que draw_roi_outline en el generador de PDFs)."""
-    with rasterio.open(path) as src:
-        arr = src.read(1)
-        nodata = src.nodata if src.nodata is not None else -9999
-        mask = (arr != nodata).astype(np.uint8)
-        anillos = []
-        for geom, valor in rio_shapes(mask, mask=None, transform=src.transform):
-            if valor != 1:
-                continue
-            for anillo in [geom["coordinates"][0], *geom["coordinates"][1:]]:
-                xs = [c[0] for c in anillo]
-                ys = [c[1] for c in anillo]
-                lons, lats = rio_transform(src.crs, "EPSG:4326", xs, ys)
-                anillos.append([[lat, lon] for lat, lon in zip(lats, lons)])
-    return anillos
+def contorno_roi_4326(gid: str) -> list[list[list[float]]]:
+    """Anillos (poligono principal + eventuales islas, ej. Villa Maria) del
+    limite real del ejido de la localidad -- no la ROI cuadrada usada para
+    procesar -- reproyectados a EPSG:4326 listos para folium.PolyLine."""
+    geom = cargar_ejidos().get(gid)
+    if geom is None:
+        return []
+    if geom["type"] == "Polygon":
+        anillos_coords = geom["coordinates"]
+    else:  # MultiPolygon
+        anillos_coords = [anillo for poligono in geom["coordinates"] for anillo in poligono]
+    return [[[lat, lon] for lon, lat in anillo] for anillo in anillos_coords]
 
 
 def raster_a_imagen_rgba(arr: np.ndarray, gid: str | None, cmap_continuo: bool) -> np.ndarray:
@@ -364,13 +394,18 @@ def raster_a_imagen_rgba(arr: np.ndarray, gid: str | None, cmap_continuo: bool) 
 
 
 @st.cache_data
-def cargar_raster_nativo(path: str) -> np.ndarray:
+def cargar_raster_nativo(path: str, gid: str | None = None) -> np.ndarray:
     """Lee el raster en su CRS original (5346), sin reproyectar -- para
     graficos estaticos (matplotlib) que no van sobre un mapa base."""
     with rasterio.open(path) as src:
         arr = src.read(1).astype(np.float32)
         nodata = src.nodata
-    return np.where(arr == nodata, np.nan, arr)
+        transform = src.transform
+        crs = src.crs
+    arr = np.where(arr == nodata, np.nan, arr)
+    if gid is not None:
+        arr = enmascarar_por_ejido(arr, gid, transform, crs)
+    return arr
 
 
 @st.cache_data
@@ -378,7 +413,7 @@ def serie_temporal_indice_actividad(gid: str) -> pd.DataFrame:
     """Promedio y maximo espacial del indice de actividad, por semana."""
     filas = []
     for fecha in semanas_disponibles(gid):
-        arr = cargar_raster_nativo(str(IA_DIR / f"{fecha}_{gid}_indice_actividad.tif"))
+        arr = cargar_raster_nativo(str(IA_DIR / f"{fecha}_{gid}_indice_actividad.tif"), gid=gid)
         if np.all(np.isnan(arr)):
             continue
         filas.append({"date": fecha, "media": np.nanmean(arr), "maximo": np.nanmax(arr)})
@@ -431,7 +466,7 @@ def cargar_variable_estatica(gid: str, variable: str) -> np.ndarray | None:
     ruta = ESTATICAS_DIR / f"gid_{gid}_estaticas" / subdir / f"gid_{gid}_estaticas_{sufijo}.tif"
     if not ruta.exists():
         return None
-    return cargar_raster_nativo(str(ruta))
+    return cargar_raster_nativo(str(ruta), gid=gid)
 
 
 def caja_leyenda_html(titulo: str, colores: list[str], etiquetas: list[str]) -> str:
@@ -498,7 +533,7 @@ def vegetacion_disponible(gid: str) -> dict[str, str]:
 def stack_vegetacion(gid: str) -> tuple[np.ndarray, list[str]]:
     disponibles = vegetacion_disponible(gid)
     fechas = sorted(disponibles.keys())
-    capas = [cargar_raster_nativo(disponibles[f]) for f in fechas]
+    capas = [cargar_raster_nativo(disponibles[f], gid=gid) for f in fechas]
     return np.stack(capas), fechas
 
 
@@ -516,6 +551,10 @@ def figura_animada_vegetacion(gid: str) -> go.Figure:
     fig.update_layout(
         height=420, margin=dict(t=10, b=10, l=10, r=10), coloraxis_showscale=False,
     )
+    # update_layout(updatemenus=[]) no alcanza -- fusiona por indice en vez
+    # de reemplazar la lista, y el boton Play/Stop que agrega px.imshow
+    # queda igual. Asignar el atributo directo si lo saca de verdad.
+    fig.layout.updatemenus = []
     for i, frame in enumerate(fig.frames):
         frame.name = fechas[i]
     slider = fig.layout.sliders[0]
@@ -553,7 +592,7 @@ def stack_idoneidad(gid: str) -> tuple[np.ndarray, list[str]]:
     cortes = bounds_categoricos(gid)
     capas = []
     for fecha in fechas:
-        arr = cargar_raster_nativo(str(MCDA_DIR / f"{fecha}_{gid}_MCDA.tif"))
+        arr = cargar_raster_nativo(str(MCDA_DIR / f"{fecha}_{gid}_MCDA.tif"), gid=gid)
         codigo = np.digitize(arr, cortes[1:-1]).astype(float)
         codigo[np.isnan(arr)] = np.nan
         capas.append(codigo)
@@ -677,6 +716,7 @@ st.markdown(
     div[data-testid="stHeading"] h1 { font-size: 2rem; }
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
     div[data-testid="stLayoutWrapper"]:has(.st-key-mapa_centrado) { align-self: center; }
+    div[data-testid="stLayoutWrapper"]:has([class*="st-key-var_"]) { align-self: center; }
 
     /* Reporte imprimible: la app no esta pensada para pantallas angostas,
        asi que sin esto el navegador imprime el layout ancho de pantalla
@@ -844,7 +884,7 @@ with tab_panel:
 
     ia_path = IA_DIR / f"{semana}_{gid}_indice_actividad.tif"
     sigma_path = IA_DIR / f"{semana}_{gid}_sigma.tif"
-    arr_ia, bounds = cargar_raster_4326(str(ia_path))
+    arr_ia, bounds = cargar_raster_4326(str(ia_path), gid=gid)
     codigo_activo = codigo_categoria_maxima(gid, arr_ia)
 
     with col_semaforo:
@@ -899,13 +939,13 @@ with tab_panel:
                 opacity=0.75,
             ).add_to(m)
 
-            for anillo in contorno_roi_4326(str(ia_path)):
+            for anillo in contorno_roi_4326(gid):
                 folium.PolyLine(
                     locations=anillo, color="#8a8a8a", weight=1.2, opacity=0.8,
                 ).add_to(m)
 
             if sigma_path.exists():
-                arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path))
+                arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path), gid=gid)
                 nombre_capa_sigma = "Error (σ, desvío intra-semanal)"
                 capa_sigma = folium.raster_layers.ImageOverlay(
                     image=raster_a_imagen_rgba(arr_sigma, None, cmap_continuo=True),
@@ -978,10 +1018,8 @@ with tab_panel:
         if not semanas_idoneidad_disponibles(gid):
             st.info("Sin datos de idoneidad para esta localidad.")
         else:
-            col_idon_mapa, col_idon_leyenda = st.columns([3, 1])
-            with col_idon_mapa:
+            with st.container(horizontal=True, vertical_alignment="center"):
                 st.plotly_chart(figura_animada_idoneidad(gid), width=720)
-            with col_idon_leyenda:
                 etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
                 st.markdown(
                     caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
@@ -998,22 +1036,33 @@ with tab_panel:
                 if arr_var is None:
                     st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
                 else:
-                    st.markdown(f"**{titulo_var}**")
-                    st.plotly_chart(figura_categorica_5(arr_var), width=230)
-                    st.markdown(
-                        caja_leyenda_html(titulo_var, PALETA_VIRIDIS5, etiquetas_var),
-                        unsafe_allow_html=True,
-                    )
+                    with st.container(width=230, key=f"var_{variable}"):
+                        st.markdown(
+                            f'<div style="text-align:center; font-weight:600; '
+                            f'margin-bottom:2px;">{titulo_var}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st.plotly_chart(figura_categorica_5(arr_var), width=230)
+                        st.markdown(
+                            caja_leyenda_html(titulo_var, PALETA_VIRIDIS5, etiquetas_var),
+                            unsafe_allow_html=True,
+                        )
         with col_v4:
-            st.markdown("**Vegetación (NDVI)**")
             if not vegetacion_disponible(gid):
+                st.markdown("**Vegetación (NDVI)**")
                 st.info("Sin datos de vegetación para esta localidad.")
             else:
-                st.plotly_chart(figura_animada_vegetacion(gid), width=230)
-                st.markdown(
-                    caja_leyenda_html("NDVI", PALETA_VIRIDIS5, CATEGORIAS_NDVI),
-                    unsafe_allow_html=True,
-                )
+                with st.container(width=230, key="var_vegetacion"):
+                    st.markdown(
+                        '<div style="text-align:center; font-weight:600; '
+                        'margin-bottom:2px;">Vegetación (NDVI)</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.plotly_chart(figura_animada_vegetacion(gid), width=230)
+                    st.markdown(
+                        caja_leyenda_html("NDVI", PALETA_VIRIDIS5, CATEGORIAS_NDVI),
+                        unsafe_allow_html=True,
+                    )
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)

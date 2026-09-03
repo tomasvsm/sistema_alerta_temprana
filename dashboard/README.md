@@ -22,6 +22,7 @@ docker run -d --name dashboard --restart unless-stopped -p 8501:8501 \
   -v $(pwd)/espacializacion/output:/app/../espacializacion/output:ro \
   -v $(pwd)/espacializacion/estaticas:/app/../espacializacion/estaticas:ro \
   -v $(pwd)/espacializacion/data/vegetacion:/app/../espacializacion/data/vegetacion:ro \
+  -v $(pwd)/espacializacion/resources:/app/../espacializacion/resources:ro \
   -v $(pwd)/modelo-temporal/output:/app/../modelo-temporal/output:ro \
   -v $(pwd)/orquestador/logs:/app/../orquestador/logs:ro \
   dashboard:test
@@ -29,10 +30,12 @@ docker run -d --name dashboard --restart unless-stopped -p 8501:8501 \
 
 Abrir `http://localhost:8501`.
 
-Los cinco volúmenes son de solo lectura: el dashboard nunca escribe nada,
+Los seis volúmenes son de solo lectura: el dashboard nunca escribe nada,
 solo lee los TIFFs de índice de actividad, las 3 variables estáticas del
-MCDA y el NDVI semanal (para la sección "Variables espaciales"), los CSV
-del modelo temporal, y
+MCDA y el NDVI semanal (para la sección "Variables espaciales"), el
+polígono de ejido real de cada localidad (`espacializacion/resources`,
+usado para recortar todos los mapas al límite administrativo en vez de
+la ROI cuadrada de procesamiento), los CSV del modelo temporal, y
 `orquestador/logs/estado_ultima_corrida.json` (para el cartel de error).
 
 ## Correr en desarrollo (sin Docker)
