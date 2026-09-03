@@ -136,8 +136,8 @@ class ControlRecentrar(MacroElement):
                     var btn = L.DomUtil.create('button', 'leaflet-bar leaflet-control');
                     btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" ' +
                         'fill="none" stroke="black" stroke-width="2" stroke-linecap="round" ' +
-                        'stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/>' +
-                        '<path d="M5 9.5V21h5v-6h4v6h5V9.5"/></svg>';
+                        'stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/>' +
+                        '</svg>';
                     btn.title = 'Volver a la vista inicial';
                     btn.style.cssText = 'width:30px;height:30px;cursor:pointer;' +
                         'background:white;border:none;display:flex;align-items:center;' +
@@ -158,6 +158,47 @@ class ControlRecentrar(MacroElement):
         super().__init__()
         self._name = "ControlRecentrar"
         self.bounds = bounds
+
+
+class LeyendaError(MacroElement):
+    """Referencia de la capa de error (sigma): un recuadro con la barra de
+    color, oculto por defecto y que solo se muestra mientras esa capa este
+    prendida (enganchado a overlayadd/overlayremove del propio control de
+    capas de Leaflet) -- si no, ocupa lugar en el mapa todo el tiempo aunque
+    la capa este apagada la mayoria de las veces."""
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        (function() {
+            var mapa = {{ this._parent.get_name() }};
+            var caja = L.DomUtil.create('div', 'leaflet-bar');
+            caja.style.cssText = 'display:none; background:white; padding:6px 10px; ' +
+                'font-size:11px; line-height:1.3; border-radius:4px;';
+            caja.innerHTML = '<div style="font-weight:600; margin-bottom:3px;">Error (σ)</div>' +
+                '<div style="width:110px; height:10px; border-radius:2px; border:1px solid #ccc; ' +
+                'background:linear-gradient(to right, #ffffff, #d4b9da, #c994c7, #df65b0, #67001f);"></div>' +
+                '<div style="display:flex; justify-content:space-between; margin-top:2px;">' +
+                '<span>0</span><span>{{ "%.2f"|format(this.vmax) }}</span></div>';
+            var LeyendaControl = L.Control.extend({
+                options: {position: 'bottomright'},
+                onAdd: function() { return caja; },
+            });
+            mapa.addControl(new LeyendaControl());
+            mapa.on('overlayadd', function(e) {
+                if (e.name === {{ this.nombre_capa | tojson }}) { caja.style.display = 'block'; }
+            });
+            mapa.on('overlayremove', function(e) {
+                if (e.name === {{ this.nombre_capa | tojson }}) { caja.style.display = 'none'; }
+            });
+        })();
+        {% endmacro %}
+    """)
+
+    def __init__(self, vmax: float, nombre_capa: str):
+        super().__init__()
+        self._name = "LeyendaError"
+        self.vmax = vmax
+        self.nombre_capa = nombre_capa
 
 
 def footer_html() -> str:
@@ -478,7 +519,16 @@ st.markdown(
         div[data-testid="stElementContainer"],
         div[data-testid="stHorizontalBlock"],
         div[data-testid="stCustomComponentV1"],
-        div[data-testid="stExpander"] { break-inside: avoid; }
+        div[data-testid="stPlotlyChart"],
+        div[data-testid="stExpander"] {
+            break-inside: avoid;
+            /* Chrome respeta page-break-inside mas consistente que
+               break-inside en su motor de impresion -- sin esto el primer
+               grafico de oviposicion se partia justo en el borde de hoja
+               (probado con el dialogo de impresion real, no solo con
+               page.pdf() de Playwright). */
+            page-break-inside: avoid;
+        }
         .block-container { max-width: 100% !important; padding: 0.3rem 0.5rem !important; }
         /* El recorte real: los graficos de Plotly quedan dibujados como
            SVG con el ancho fijo en pixeles que tenian en pantalla (nunca
@@ -639,14 +689,17 @@ with tab_panel:
 
         if sigma_path.exists():
             arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path))
+            nombre_capa_sigma = "Error (σ, desvío intra-semanal)"
             capa_sigma = folium.raster_layers.ImageOverlay(
                 image=raster_a_imagen_rgba(arr_sigma, None, cmap_continuo=True),
                 bounds=bounds_sigma,
-                name="Error (σ, desvío intra-semanal)",
+                name=nombre_capa_sigma,
                 opacity=0.75,
                 show=False,
             )
             capa_sigma.add_to(m)
+            vmax_sigma = float(np.nanmax(arr_sigma)) if np.any(~np.isnan(arr_sigma)) else 1.0
+            LeyendaError(vmax_sigma, nombre_capa_sigma).add_to(m)
 
         folium.LayerControl(collapsed=True).add_to(m)
         m.fit_bounds(bounds)
@@ -740,7 +793,13 @@ with tab_panel:
                 yaxis=dict(title="Precipitación (mm)"),
                 yaxis2=dict(title="°C / %", overlaying="y", side="right"),
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
-                xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
+                # Datos completos desde siempre en el grafico (autoscale
+                # los muestra), pero al abrir arranca con zoom al ultimo
+                # año -- el rango largo completo casi no se distingue.
+                xaxis=dict(
+                    tickformatstops=TICKFORMATSTOPS_FECHA,
+                    range=[hoy - pd.Timedelta(days=365), hoy],
+                ),
             )
             st.plotly_chart(fig_met, use_container_width=True)
 
