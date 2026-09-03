@@ -27,6 +27,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import rasterio
 import streamlit as st
+import streamlit.components.v1 as components
 from matplotlib import colors as mcolors
 from rasterio.features import shapes as rio_shapes
 from rasterio.vrt import WarpedVRT
@@ -133,10 +134,14 @@ class ControlRecentrar(MacroElement):
                 options: {position: 'topleft'},
                 onAdd: function() {
                     var btn = L.DomUtil.create('button', 'leaflet-bar leaflet-control');
-                    btn.innerHTML = '⤢';
+                    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" ' +
+                        'fill="none" stroke="black" stroke-width="2" stroke-linecap="round" ' +
+                        'stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/>' +
+                        '<path d="M5 9.5V21h5v-6h4v6h5V9.5"/></svg>';
                     btn.title = 'Volver a la vista inicial';
-                    btn.style.cssText = 'width:30px;height:30px;line-height:28px;' +
-                        'font-size:16px;cursor:pointer;background:white;border:none;';
+                    btn.style.cssText = 'width:30px;height:30px;cursor:pointer;' +
+                        'background:white;border:none;display:flex;align-items:center;' +
+                        'justify-content:center;';
                     L.DomEvent.on(btn, 'click', function(e) {
                         L.DomEvent.stopPropagation(e);
                         mapa.fitBounds(limites);
@@ -461,10 +466,13 @@ st.markdown(
         div[data-testid="stSlider"],
         div[data-testid="stFullScreenFrame"] button,
         .leaflet-control-zoom { display: none !important; }
-        /* Streamlit colapsa el contenido de un expander cerrado con
-           display:none sobre un <details> nativo; forzarlo visible para
-           que no falte nada en el papel aunque el usuario no lo haya
-           abierto a mano. */
+        /* Esto NO alcanza solo, queda por si ayuda en algo, pero el
+           bloqueo real es el atributo HTML inert (no display/CSS) que
+           Streamlit pone en el contenido de un expander cerrado --
+           Chromium excluye lo inert de la impresion sin importar el CSS.
+           El arreglo de verdad (sacar inert + abrir el <details>) esta en
+           el componente JS de mas abajo, enganchado al cambio de la media
+           query "print". */
         details:not([open]) > *:not(summary) { display: block !important; }
         [data-testid="stExpanderDetails"] { display: block !important; height: auto !important; }
         div[data-testid="stElementContainer"],
@@ -472,10 +480,56 @@ st.markdown(
         div[data-testid="stCustomComponentV1"],
         div[data-testid="stExpander"] { break-inside: avoid; }
         .block-container { max-width: 100% !important; padding: 0.3rem 0.5rem !important; }
+        /* El recorte real: los graficos de Plotly quedan dibujados como
+           SVG con el ancho fijo en pixeles que tenian en pantalla (nunca
+           en el ancho de la hoja), y no hay ningun evento de impresion
+           que Plotly escuche para redibujarse mas angosto -- ni siquiera
+           JS inyectado a mano llega a tiempo (probado: Chromium recalcula
+           el layout al tamaño de hoja recien en el paso final de
+           impresion, sin re-ejecutar JS). Un CSS "zoom" a nivel pagina lo
+           arregla pero rompe el mapa (Leaflet no recalcula su tamaño dentro
+           de un iframe zoomeado, se corta por un borde -- probado). No hay
+           arreglo limpio solo por CSS: la opcion real es bajar la escala
+           en el dialogo de impresion del navegador antes de imprimir
+           (Mas opciones > Escala > ~60%), que si funciona bien porque
+           reescala la pagina ya renderizada entera, iframes incluidos. */
         @page { size: A4 landscape; margin: 8mm; }
     }
     </style>""",
     unsafe_allow_html=True,
+)
+
+# El CSS de arriba no alcanza para que el contenido de un expander cerrado
+# salga en el PDF: Streamlit marca ese contenido con el atributo HTML
+# inert, y Chromium excluye lo inert de la impresion sin importar el
+# display/CSS (probado). Sacar el atributo si requiere JS -- por eso va en
+# un componente (iframe same-origin, con acceso a window.parent), enganchado
+# al cambio de la media query "print" en vez de a beforeprint/afterprint
+# (mas confiable entre motores de impresion, incluida la de Playwright).
+# Se marca cada expander que se abrio asi para volver a cerrarlo despues,
+# sin tocar los que el usuario ya tenia abiertos por su cuenta.
+components.html(
+    """<script>
+    window.parent.matchMedia('print').addEventListener('change', function(e) {
+        var detalles = window.parent.document.querySelectorAll('[data-testid="stExpanderDetails"]');
+        detalles.forEach(function(det) {
+            var details = det.closest('details');
+            if (!details) return;
+            if (e.matches) {
+                if (det.hasAttribute('inert') && !details.hasAttribute('open')) {
+                    det.setAttribute('data-reabierto-para-imprimir', '1');
+                    det.removeAttribute('inert');
+                    details.setAttribute('open', '');
+                }
+            } else if (det.hasAttribute('data-reabierto-para-imprimir')) {
+                det.removeAttribute('data-reabierto-para-imprimir');
+                det.setAttribute('inert', '');
+                details.removeAttribute('open');
+            }
+        });
+    });
+    </script>""",
+    height=0,
 )
 
 estado = cargar_estado_orquestador()
