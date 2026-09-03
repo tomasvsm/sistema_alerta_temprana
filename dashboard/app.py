@@ -126,6 +126,14 @@ def _hex_con_alpha(color_hex: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
+def fmt_fecha(iso: str) -> str:
+    """YYYY-MM-DD -> DD/MM/YYYY. Todas las fechas que se muestran como
+    texto (selectores, titulos, sliders) usan este mismo formato -- antes
+    convivian con el formato ISO de los nombres de archivo, lo que
+    quedaba inconsistente entre distintas partes del dashboard."""
+    return f"{iso[8:10]}/{iso[5:7]}/{iso[0:4]}"
+
+
 class ControlRecentrar(MacroElement):
     """Boton "volver a la vista inicial" para el mapa: Leaflet no trae uno
     propio, y despues de hacer zoom/paneo manual no hay forma de recentrar
@@ -428,7 +436,7 @@ def figura_animada_indice_actividad(gid: str) -> go.Figure:
     nuevos_steps = []
     for i, step in enumerate(slider.steps):
         step_dict = step.to_plotly_json()
-        step_dict["label"] = fechas[i]
+        step_dict["label"] = fmt_fecha(fechas[i])
         step_dict["args"] = [[fechas[i]], step_dict["args"][1]]
         nuevos_steps.append(step_dict)
     slider.steps = nuevos_steps
@@ -444,34 +452,61 @@ def figura_animada_indice_actividad(gid: str) -> go.Figure:
     return fig
 
 
+# Mismos 5 colores (Viridis discreto en 0/0.25/0.5/0.75/1) y mismas
+# etiquetas de categoria que las figuras del manuscrito
+# (manuscrito/figuras/variables*.png) -- estas 4 variables ya vienen
+# categorizadas en esos 5 valores exactos desde el procesamiento (ver
+# calculo_mcda.py y calculo_vegetacion.py), no son continuas.
+PALETA_VIRIDIS5 = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"]
+
 # Rutas fijas de las 3 variables estaticas del MCDA (no cambian semana a
 # semana, una sola por localidad -- ver espacializacion/src/calculo_mcda.py).
 VARIABLES_ESTATICAS = {
-    "construcciones": ("construcciones", "Buildings_cat_100m", "Altura de construcciones"),
-    "poblacion": ("poblacion", "People_100m", "Población"),
-    "nbi": ("socioeconomica", "NBI_100m", "NBI"),
+    "construcciones": (
+        "construcciones", "Buildings_cat_100m", "Altura de construcciones",
+        ["Sin construcciones", "Edificios altos", "Edificios medios", "Edificios bajos", "Casas"],
+    ),
+    "poblacion": (
+        "poblacion", "People_100m", "Población",
+        ["0 a 10", "10 a 20", "20 a 30", "30 a 40", "> 40"],
+    ),
+    "nbi": (
+        "socioeconomica", "NBI_100m", "NBI",
+        ["< 5%", "5% a 10%", "10% a 15%", "15% a 25%", "> 25%"],
+    ),
 }
+CATEGORIAS_NDVI = ["Sin vegetación", "Muy densa", "Muy escasa", "Escasa", "Moderada"]
 
 
 @st.cache_data
 def cargar_variable_estatica(gid: str, variable: str) -> np.ndarray | None:
-    subdir, sufijo, _ = VARIABLES_ESTATICAS[variable]
+    subdir, sufijo, _, _ = VARIABLES_ESTATICAS[variable]
     ruta = ESTATICAS_DIR / f"gid_{gid}_estaticas" / subdir / f"gid_{gid}_estaticas_{sufijo}.tif"
     if not ruta.exists():
         return None
     return cargar_raster_nativo(str(ruta))
 
 
-def figura_variable_estatica(arr: np.ndarray, titulo: str) -> go.Figure:
+def leyenda_categorica_html(etiquetas: list[str]) -> str:
+    return " · ".join(
+        f'<span style="color:{c}">■</span> {e}' for c, e in zip(PALETA_VIRIDIS5, etiquetas)
+    )
+
+
+def figura_categorica_5(arr: np.ndarray) -> go.Figure:
+    """Las 4 capas ya vienen con exactamente estos 5 valores (0, 0.25,
+    0.5, 0.75, 1) -- alcanza con escalarlas a indice de color 0-4, no hace
+    falta digitize."""
+    codigo = np.round(arr * 4)
     fig = px.imshow(
-        arr, color_continuous_scale="YlGnBu", range_color=[0, 1], aspect="equal",
+        codigo, color_continuous_scale=_colorscale_escalonada(PALETA_VIRIDIS5),
+        range_color=[0, 5], aspect="equal",
     )
     fig.update_traces(hoverinfo="skip", hovertemplate=None)
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        title=titulo, height=300, coloraxis_showscale=False,
-        margin=dict(t=40, b=10, l=10, r=10),
+        height=300, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
     )
     return fig
 
@@ -507,16 +542,17 @@ def stack_vegetacion(gid: str) -> tuple[np.ndarray, list[str]]:
 
 def figura_animada_vegetacion(gid: str) -> go.Figure:
     stack, fechas = stack_vegetacion(gid)
+    codigos = np.round(stack * 4)
     fig = px.imshow(
-        stack, animation_frame=0,
-        color_continuous_scale="YlGn", range_color=[0, 1], aspect="equal",
+        codigos, animation_frame=0,
+        color_continuous_scale=_colorscale_escalonada(PALETA_VIRIDIS5),
+        range_color=[0, 5], aspect="equal",
     )
     fig.update_traces(hoverinfo="skip", hovertemplate=None)
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        height=420, margin=dict(t=10, b=10, l=10, r=10),
-        coloraxis_colorbar=dict(title="NDVI"),
+        height=420, margin=dict(t=10, b=10, l=10, r=10), coloraxis_showscale=False,
     )
     for i, frame in enumerate(fig.frames):
         frame.name = fechas[i]
@@ -524,7 +560,7 @@ def figura_animada_vegetacion(gid: str) -> go.Figure:
     nuevos_steps = []
     for i, step in enumerate(slider.steps):
         step_dict = step.to_plotly_json()
-        step_dict["label"] = fechas[i]
+        step_dict["label"] = fmt_fecha(fechas[i])
         step_dict["args"] = [[fechas[i]], step_dict["args"][1]]
         nuevos_steps.append(step_dict)
     slider.steps = nuevos_steps
@@ -810,7 +846,7 @@ with tab_panel:
 
     with col_sel_sem:
         st.selectbox(
-            "Semana (fecha de fin)", options=semanas,
+            "Semana (fecha de fin)", options=semanas, format_func=fmt_fecha,
             index=semanas.index(st.session_state[ESTADO_SEMANA_KEY]),
             key=f"{ESTADO_SEMANA_KEY}_select", on_change=_semana_desde_selectbox,
             filter_mode=None,
@@ -849,6 +885,7 @@ with tab_panel:
                 "Recorrer semanas", options=semanas_cronologico,
                 value=semana, key=f"{ESTADO_SEMANA_KEY}_slider",
                 on_change=_semana_desde_slider, label_visibility="collapsed",
+                format_func=fmt_fecha,
             )
 
             centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
@@ -918,7 +955,7 @@ with tab_panel:
             desde = df_ovip["date"].min().strftime("%Y-%m-%d")
             st.plotly_chart(
                 fig_indice_oviposicion(
-                    df_ovip, f"Índice de oviposición: desde {desde}",
+                    df_ovip, f"Índice de oviposición: desde {fmt_fecha(desde)}",
                     dias_atras=None, height=270,
                 ),
                 width=410,
@@ -963,13 +1000,8 @@ with tab_panel:
         )
         st.markdown(
             f"**Índice de idoneidad de hábitat** ({referencias_idoneidad}) "
-            f"&mdash; semana finalizada el {semana}",
+            f"&mdash; semana finalizada el {fmt_fecha(semana)}",
             unsafe_allow_html=True,
-        )
-        st.caption(
-            "Combina las cuatro capas de abajo (idoneidad espacial pura, "
-            "sin oviposición) -- las mismas 4 categorías y colores que el "
-            "mapa de índice de actividad."
         )
         arr_idoneidad = cargar_idoneidad(gid, semana)
         if arr_idoneidad is None:
@@ -978,29 +1010,34 @@ with tab_panel:
             st.plotly_chart(figura_idoneidad(gid, arr_idoneidad), width=950)
 
         st.divider()
-        st.caption(
-            "Las cuatro capas que combina el modelo espacial: tres son "
-            "estáticas (no cambian semana a semana), la vegetación se "
-            "actualiza cada semana según la imagen satelital disponible."
-        )
+
         col_v1, col_v2, col_v3 = st.columns(3)
         for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
             with col:
                 arr_var = cargar_variable_estatica(gid, variable)
-                _, _, titulo_var = VARIABLES_ESTATICAS[variable]
+                _, _, titulo_var, etiquetas_var = VARIABLES_ESTATICAS[variable]
                 if arr_var is None:
                     st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
                 else:
-                    st.plotly_chart(figura_variable_estatica(arr_var, titulo_var), width=310)
+                    st.markdown(f"**{titulo_var}**")
+                    st.plotly_chart(figura_categorica_5(arr_var), width=310)
+                    st.markdown(
+                        "<br>".join(
+                            f'<span style="color:{c}">■</span> {e}'
+                            for c, e in zip(PALETA_VIRIDIS5, etiquetas_var)
+                        ),
+                        unsafe_allow_html=True,
+                    )
 
-        st.markdown("**Vegetación (NDVI)**")
+        st.divider()
+
+        st.markdown(
+            f"**Vegetación (NDVI)** ({leyenda_categorica_html(CATEGORIAS_NDVI)})",
+            unsafe_allow_html=True,
+        )
         if not vegetacion_disponible(gid):
             st.info("Sin datos de vegetación para esta localidad.")
         else:
-            st.caption(
-                "Arrastrá el control para ver cualquier semana disponible, o tocá "
-                "Play para recorrerlas todas."
-            )
             st.plotly_chart(figura_animada_vegetacion(gid), width=950)
 
     with st.expander("Datos meteorológicos"):
