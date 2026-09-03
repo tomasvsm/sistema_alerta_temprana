@@ -529,7 +529,16 @@ st.markdown(
                page.pdf() de Playwright). */
             page-break-inside: avoid;
         }
-        .block-container { max-width: 100% !important; padding: 0.3rem 0.5rem !important; }
+        /* No max-width:100% -- eso hereda el ancho de LA VENTANA del
+           usuario (que puede ser mucho mas ancha que la hoja), y como el
+           mapa es responsive (width:100% de su columna) pero los graficos
+           de Plotly no (ancho fijo en pixeles, calculado en pantalla),
+           un contenedor mas ancho que la hoja hace que el mapa "se
+           estire" de mas mientras los graficos quedan chicos y fijos --
+           eso es lo que se ve como que el mapa crece solo. Un ancho fijo
+           en px, mas cercano al ancho real de una hoja A4 apaisada
+           (~281mm de zona imprimible a 96dpi), evita ese desajuste. */
+        .block-container { max-width: 1050px !important; padding: 0.3rem 0.5rem !important; }
         /* El recorte real: los graficos de Plotly quedan dibujados como
            SVG con el ancho fijo en pixeles que tenian en pantalla (nunca
            en el ancho de la hoja), y no hay ningun evento de impresion
