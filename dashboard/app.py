@@ -399,59 +399,6 @@ def _colorscale_escalonada(colores: list[str]) -> list:
     return escala
 
 
-@st.cache_data
-def stack_categorias_indice_actividad(gid: str) -> tuple[np.ndarray, list[str]]:
-    """Todas las semanas disponibles como un stack (semana, alto, ancho) de
-    codigos de categoria (0-3), en orden cronologico -- para el visor
-    animado."""
-    fechas = list(reversed(semanas_disponibles(gid)))
-    cortes = bounds_categoricos(gid)
-    capas = []
-    for fecha in fechas:
-        arr = cargar_raster_nativo(str(IA_DIR / f"{fecha}_{gid}_indice_actividad.tif"))
-        codigo = np.digitize(arr, cortes[1:-1]).astype(float)
-        codigo[np.isnan(arr)] = np.nan
-        capas.append(codigo)
-    return np.stack(capas), fechas
-
-
-def figura_animada_indice_actividad(gid: str) -> go.Figure:
-    stack, fechas = stack_categorias_indice_actividad(gid)
-    fig = px.imshow(
-        stack, animation_frame=0,
-        color_continuous_scale=_colorscale_escalonada(PALETA),
-        range_color=[0, len(PALETA)],
-        aspect="equal",
-    )
-    fig.update_traces(hoverinfo="skip", hovertemplate=None)
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
-    fig.update_layout(
-        coloraxis_showscale=False, height=420,
-        margin=dict(t=10, b=10, l=10, r=10),
-    )
-    for i, frame in enumerate(fig.frames):
-        frame.name = fechas[i]
-    slider = fig.layout.sliders[0]
-    nuevos_steps = []
-    for i, step in enumerate(slider.steps):
-        step_dict = step.to_plotly_json()
-        step_dict["label"] = fmt_fecha(fechas[i])
-        step_dict["args"] = [[fechas[i]], step_dict["args"][1]]
-        nuevos_steps.append(step_dict)
-    slider.steps = nuevos_steps
-    slider.currentvalue = dict(prefix="Semana: ")
-
-    # Arranca mostrando la semana mas reciente (ultimo frame), no la mas
-    # vieja -- animation_frame de Plotly siempre pone el frame 0 primero
-    # por defecto.
-    ultimo = len(fig.frames) - 1
-    fig.data[0].z = fig.frames[ultimo].data[0].z
-    slider.active = ultimo
-
-    return fig
-
-
 # Mismos 5 colores (Viridis discreto en 0/0.25/0.5/0.75/1) y mismas
 # etiquetas de categoria que las figuras del manuscrito
 # (manuscrito/figuras/variables*.png) -- estas 4 variables ya vienen
@@ -1003,7 +950,7 @@ with tab_panel:
                 width=410,
             )
 
-    with st.expander("Evolución del índice de actividad (serie temporal y mapas animados)"):
+    with st.expander("Evolución del índice de actividad (serie temporal)"):
         df_serie = serie_temporal_indice_actividad(gid)
         if df_serie.empty:
             st.info("Sin semanas suficientes para mostrar evolución.")
@@ -1024,16 +971,7 @@ with tab_panel:
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
                 xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
             )
-
-            col_evol_serie, col_evol_mapa = st.columns(2)
-            with col_evol_serie:
-                st.plotly_chart(fig_serie, width=465)
-            with col_evol_mapa:
-                st.caption(
-                    "Arrastrá el control para ver cualquier semana disponible, o tocá "
-                    "Play para recorrerlas todas."
-                )
-                st.plotly_chart(figura_animada_indice_actividad(gid), width=465)
+            st.plotly_chart(fig_serie, width=950)
 
     with st.expander("Variables espaciales (MCDA)"):
         st.markdown("**Índice de idoneidad de hábitat**")
