@@ -770,7 +770,7 @@ with tab_panel:
                     df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
                     dias_atras=90, height=270,
                 ),
-                width="stretch",
+                width=410,
             )
             desde = df_ovip["date"].min().strftime("%Y-%m-%d")
             st.plotly_chart(
@@ -778,7 +778,7 @@ with tab_panel:
                     df_ovip, f"Índice de oviposición: desde {desde}",
                     dias_atras=None, height=270,
                 ),
-                width="stretch",
+                width=410,
             )
 
     with st.expander("Evolución del índice de actividad (serie temporal y mapas animados)"):
@@ -805,13 +805,13 @@ with tab_panel:
 
             col_evol_serie, col_evol_mapa = st.columns(2)
             with col_evol_serie:
-                st.plotly_chart(fig_serie, width="stretch")
+                st.plotly_chart(fig_serie, width=465)
             with col_evol_mapa:
                 st.caption(
                     "Arrastrá el control para ver cualquier semana disponible, o tocá "
                     "Play para recorrerlas todas."
                 )
-                st.plotly_chart(figura_animada_indice_actividad(gid), width="stretch")
+                st.plotly_chart(figura_animada_indice_actividad(gid), width=465)
 
     with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
@@ -848,7 +848,7 @@ with tab_panel:
                     range=[hoy - pd.Timedelta(days=365), hoy],
                 ),
             )
-            st.plotly_chart(fig_met, width="stretch")
+            st.plotly_chart(fig_met, width=960)
 
     st.divider()
     st.markdown(footer_html(), unsafe_allow_html=True)
