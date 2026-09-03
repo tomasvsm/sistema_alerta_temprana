@@ -430,6 +430,14 @@ def figura_animada_indice_actividad(gid: str) -> go.Figure:
         nuevos_steps.append(step_dict)
     slider.steps = nuevos_steps
     slider.currentvalue = dict(prefix="Semana: ")
+
+    # Arranca mostrando la semana mas reciente (ultimo frame), no la mas
+    # vieja -- animation_frame de Plotly siempre pone el frame 0 primero
+    # por defecto.
+    ultimo = len(fig.frames) - 1
+    fig.data[0].z = fig.frames[ultimo].data[0].z
+    slider.active = ultimo
+
     return fig
 
 
@@ -753,7 +761,7 @@ with tab_panel:
 
         ControlRecentrar(bounds).add_to(m)
 
-        st_folium(m, height=460, use_container_width=True, returned_objects=[])
+        st_folium(m, height=460, width=610, returned_objects=[])
 
         st.caption(
             f"Umbral de Youden de esta localidad: {YOUDEN[gid]:.4f} "
