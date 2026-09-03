@@ -43,6 +43,7 @@ MODELO_DIR = REPO_ROOT / "modelo-temporal" / "output"
 ESTADO_JSON = REPO_ROOT / "orquestador" / "logs" / "estado_ultima_corrida.json"
 ESTATICAS_DIR = REPO_ROOT / "espacializacion" / "estaticas"
 VEGETACION_DIR = REPO_ROOT / "espacializacion" / "data" / "vegetacion"
+MCDA_DIR = REPO_ROOT / "espacializacion" / "output" / "MCDA"
 
 # Cordoba primero -- es la localidad default al abrir (selectbox sin index
 # explicito toma la primera opcion del dict).
@@ -537,6 +538,36 @@ def figura_animada_vegetacion(gid: str) -> go.Figure:
 
 
 @st.cache_data
+def cargar_idoneidad(gid: str, semana: str) -> np.ndarray | None:
+    """Salida cruda del MCDA (idoneidad de habitat, 0-1) para una semana
+    puntual -- la misma capa que despues se multiplica por la oviposicion
+    diaria para dar el indice de actividad."""
+    ruta = MCDA_DIR / f"{semana}_{gid}_MCDA.tif"
+    if not ruta.exists():
+        return None
+    return cargar_raster_nativo(str(ruta))
+
+
+def figura_idoneidad(gid: str, arr: np.ndarray) -> go.Figure:
+    """Mismas 4 categorias/colores que el mapa de indice de actividad
+    (bounds_categoricos), para que se lean igual -- ver semaforo_html."""
+    cortes = bounds_categoricos(gid)
+    codigo = np.digitize(arr, cortes[1:-1]).astype(float)
+    codigo[np.isnan(arr)] = np.nan
+    fig = px.imshow(
+        codigo, color_continuous_scale=_colorscale_escalonada(PALETA),
+        range_color=[0, len(PALETA)], aspect="equal",
+    )
+    fig.update_traces(hoverinfo="skip", hovertemplate=None)
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
+    fig.update_layout(
+        height=420, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
+    )
+    return fig
+
+
+@st.cache_data
 def cargar_indice_oviposicion(gid: str) -> pd.DataFrame | None:
     nombre = GID_SNAKE[gid]
     candidatos = sorted(MODELO_DIR.glob(f"*_{gid}_{nombre}_indice_oviposicion.csv"))
@@ -926,6 +957,27 @@ with tab_panel:
                 st.plotly_chart(figura_animada_indice_actividad(gid), width=465)
 
     with st.expander("Variables espaciales (MCDA)"):
+        referencias_idoneidad = " · ".join(
+            f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
+            for c, cat in zip(PALETA, CATEGORIAS)
+        )
+        st.markdown(
+            f"**Índice de idoneidad de hábitat** ({referencias_idoneidad}) "
+            f"&mdash; semana finalizada el {semana}",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            "Combina las cuatro capas de abajo (idoneidad espacial pura, "
+            "sin oviposición) -- las mismas 4 categorías y colores que el "
+            "mapa de índice de actividad."
+        )
+        arr_idoneidad = cargar_idoneidad(gid, semana)
+        if arr_idoneidad is None:
+            st.info("Sin datos de idoneidad para esta semana.")
+        else:
+            st.plotly_chart(figura_idoneidad(gid, arr_idoneidad), width=950)
+
+        st.divider()
         st.caption(
             "Las cuatro capas que combina el modelo espacial: tres son "
             "estáticas (no cambian semana a semana), la vegetación se "
