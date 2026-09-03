@@ -525,6 +525,7 @@ st.markdown(
     div[data-testid="stHeading"]:has(h1) { text-align: center; }
     div[data-testid="stHeading"] h1 { font-size: 2rem; }
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
+    div[data-testid="stLayoutWrapper"]:has(.st-key-mapa_centrado) { align-self: center; }
 
     /* Reporte imprimible: la app no esta pensada para pantallas angostas,
        asi que sin esto el navegador imprime el layout ancho de pantalla
@@ -701,67 +702,75 @@ with tab_panel:
     col_mapa, col_ovip = st.columns([3, 2])
 
     with col_mapa:
-        referencias = " · ".join(
-            f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
-            for c, cat in zip(PALETA, CATEGORIAS)
-        )
-        st.markdown(
-            f"**Índice de actividad** ({referencias})", unsafe_allow_html=True
-        )
+        # Titulo, barra de tiempo y mapa comparten el mismo ancho fijo del
+        # mapa (610px) y quedan centrados dentro de la columna -- si no,
+        # el titulo y la barra (que si son responsive) quedaban mas anchos
+        # que el mapa (fijo) y todo se veia desalineado. st.container con
+        # width= es un elemento real (a diferencia de un <div> suelto en
+        # st.markdown, que Streamlit renderiza aislado y no envuelve a los
+        # hermanos siguientes).
+        with st.container(width=610, key="mapa_centrado"):
+            referencias = " · ".join(
+                f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
+                for c, cat in zip(PALETA, CATEGORIAS)
+            )
+            st.markdown(
+                f"**Índice de actividad** ({referencias})", unsafe_allow_html=True
+            )
 
-        semanas_cronologico = list(reversed(semanas))
-        st.select_slider(
-            "Recorrer semanas", options=semanas_cronologico,
-            value=semana, key=f"{ESTADO_SEMANA_KEY}_slider",
-            on_change=_semana_desde_slider, label_visibility="collapsed",
-        )
+            semanas_cronologico = list(reversed(semanas))
+            st.select_slider(
+                "Recorrer semanas", options=semanas_cronologico,
+                value=semana, key=f"{ESTADO_SEMANA_KEY}_slider",
+                on_change=_semana_desde_slider, label_visibility="collapsed",
+            )
 
-        centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
+            centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
 
-        m = folium.Map(location=centro, tiles=None)
-        folium.TileLayer(
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
-                  "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri",
-            name="Claro", show=True,
-        ).add_to(m)
-        folium.TileLayer(
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
-                  "World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri",
-            name="Satelital", show=False,
-        ).add_to(m)
-        folium.raster_layers.ImageOverlay(
-            image=raster_a_imagen_rgba(arr_ia, gid, cmap_continuo=False),
-            bounds=bounds,
-            name="Índice de actividad",
-            opacity=0.75,
-        ).add_to(m)
-
-        for anillo in contorno_roi_4326(str(ia_path)):
-            folium.PolyLine(
-                locations=anillo, color="#8a8a8a", weight=1.2, opacity=0.8,
+            m = folium.Map(location=centro, tiles=None)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
+                      "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+                attr="Esri",
+                name="Claro", show=True,
+            ).add_to(m)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
+                      "World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                attr="Esri",
+                name="Satelital", show=False,
+            ).add_to(m)
+            folium.raster_layers.ImageOverlay(
+                image=raster_a_imagen_rgba(arr_ia, gid, cmap_continuo=False),
+                bounds=bounds,
+                name="Índice de actividad",
+                opacity=0.75,
             ).add_to(m)
 
-        if sigma_path.exists():
-            arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path))
-            nombre_capa_sigma = "Error (σ, desvío intra-semanal)"
-            capa_sigma = folium.raster_layers.ImageOverlay(
-                image=raster_a_imagen_rgba(arr_sigma, None, cmap_continuo=True),
-                bounds=bounds_sigma,
-                name=nombre_capa_sigma,
-                opacity=0.75,
-                show=False,
-            )
-            capa_sigma.add_to(m)
-            LeyendaError(VMAX_SIGMA, nombre_capa_sigma).add_to(m)
+            for anillo in contorno_roi_4326(str(ia_path)):
+                folium.PolyLine(
+                    locations=anillo, color="#8a8a8a", weight=1.2, opacity=0.8,
+                ).add_to(m)
 
-        folium.LayerControl(collapsed=True).add_to(m)
-        m.fit_bounds(bounds)
+            if sigma_path.exists():
+                arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path))
+                nombre_capa_sigma = "Error (σ, desvío intra-semanal)"
+                capa_sigma = folium.raster_layers.ImageOverlay(
+                    image=raster_a_imagen_rgba(arr_sigma, None, cmap_continuo=True),
+                    bounds=bounds_sigma,
+                    name=nombre_capa_sigma,
+                    opacity=0.75,
+                    show=False,
+                )
+                capa_sigma.add_to(m)
+                LeyendaError(VMAX_SIGMA, nombre_capa_sigma).add_to(m)
 
-        ControlRecentrar(bounds).add_to(m)
+            folium.LayerControl(collapsed=True).add_to(m)
+            m.fit_bounds(bounds)
 
-        st_folium(m, height=460, width=610, returned_objects=[])
+            ControlRecentrar(bounds).add_to(m)
+
+            st_folium(m, height=460, width=610, returned_objects=[])
 
         st.caption(
             f"Umbral de Youden de esta localidad: {YOUDEN[gid]:.4f} "
