@@ -589,24 +589,35 @@ def figura_animada_vegetacion(gid: str) -> go.Figure:
 
 
 @st.cache_data
-def cargar_idoneidad(gid: str, semana: str) -> np.ndarray | None:
-    """Salida cruda del MCDA (idoneidad de habitat, 0-1) para una semana
-    puntual -- la misma capa que despues se multiplica por la oviposicion
-    diaria para dar el indice de actividad."""
-    ruta = MCDA_DIR / f"{semana}_{gid}_MCDA.tif"
-    if not ruta.exists():
-        return None
-    return cargar_raster_nativo(str(ruta))
+def semanas_idoneidad_disponibles(gid: str) -> list[str]:
+    patron = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})_{gid}_MCDA\.tif$")
+    if not MCDA_DIR.is_dir():
+        return []
+    fechas = [m.group(1) for f in MCDA_DIR.iterdir() if (m := patron.match(f.name))]
+    return sorted(fechas)
 
 
-def figura_idoneidad(gid: str, arr: np.ndarray) -> go.Figure:
-    """Mismas 4 categorias/colores que el mapa de indice de actividad
-    (bounds_categoricos), para que se lean igual -- ver semaforo_html."""
+@st.cache_data
+def stack_idoneidad(gid: str) -> tuple[np.ndarray, list[str]]:
+    """Todas las semanas de idoneidad (MCDA) disponibles, ya categorizadas
+    con las mismas 4 categorias/colores del indice de actividad
+    (bounds_categoricos) -- ver semaforo_html."""
+    fechas = semanas_idoneidad_disponibles(gid)
     cortes = bounds_categoricos(gid)
-    codigo = np.digitize(arr, cortes[1:-1]).astype(float)
-    codigo[np.isnan(arr)] = np.nan
+    capas = []
+    for fecha in fechas:
+        arr = cargar_raster_nativo(str(MCDA_DIR / f"{fecha}_{gid}_MCDA.tif"))
+        codigo = np.digitize(arr, cortes[1:-1]).astype(float)
+        codigo[np.isnan(arr)] = np.nan
+        capas.append(codigo)
+    return np.stack(capas), fechas
+
+
+def figura_animada_idoneidad(gid: str) -> go.Figure:
+    stack, fechas = stack_idoneidad(gid)
     fig = px.imshow(
-        codigo, color_continuous_scale=_colorscale_escalonada(PALETA),
+        stack, animation_frame=0,
+        color_continuous_scale=_colorscale_escalonada(PALETA),
         range_color=[0, len(PALETA)], aspect="equal",
     )
     fig.update_traces(hoverinfo="skip", hovertemplate=None)
@@ -615,6 +626,22 @@ def figura_idoneidad(gid: str, arr: np.ndarray) -> go.Figure:
     fig.update_layout(
         height=420, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
     )
+    for i, frame in enumerate(fig.frames):
+        frame.name = fechas[i]
+    slider = fig.layout.sliders[0]
+    nuevos_steps = []
+    for i, step in enumerate(slider.steps):
+        step_dict = step.to_plotly_json()
+        step_dict["label"] = fmt_fecha(fechas[i])
+        step_dict["args"] = [[fechas[i]], step_dict["args"][1]]
+        nuevos_steps.append(step_dict)
+    slider.steps = nuevos_steps
+    slider.currentvalue = dict(prefix="Semana: ")
+
+    ultimo = len(fig.frames) - 1
+    fig.data[0].z = fig.frames[ultimo].data[0].z
+    slider.active = ultimo
+
     return fig
 
 
@@ -1009,14 +1036,13 @@ with tab_panel:
                 st.plotly_chart(figura_animada_indice_actividad(gid), width=465)
 
     with st.expander("Variables espaciales (MCDA)"):
-        st.markdown(f"**Índice de idoneidad de hábitat** &mdash; semana finalizada el {fmt_fecha(semana)}")
-        arr_idoneidad = cargar_idoneidad(gid, semana)
-        if arr_idoneidad is None:
-            st.info("Sin datos de idoneidad para esta semana.")
+        st.markdown("**Índice de idoneidad de hábitat**")
+        if not semanas_idoneidad_disponibles(gid):
+            st.info("Sin datos de idoneidad para esta localidad.")
         else:
             col_idon_mapa, col_idon_leyenda = st.columns([3, 1])
             with col_idon_mapa:
-                st.plotly_chart(figura_idoneidad(gid, arr_idoneidad), width=720)
+                st.plotly_chart(figura_animada_idoneidad(gid), width=720)
             with col_idon_leyenda:
                 etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
                 st.markdown(
@@ -1026,7 +1052,7 @@ with tab_panel:
 
         st.divider()
 
-        col_v1, col_v2, col_v3 = st.columns(3)
+        col_v1, col_v2, col_v3, col_v4 = st.columns(4)
         for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
             with col:
                 arr_var = cargar_variable_estatica(gid, variable)
@@ -1035,22 +1061,17 @@ with tab_panel:
                     st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
                 else:
                     st.markdown(f"**{titulo_var}**")
-                    st.plotly_chart(figura_categorica_5(arr_var), width=310)
+                    st.plotly_chart(figura_categorica_5(arr_var), width=230)
                     st.markdown(
                         caja_leyenda_html(titulo_var, PALETA_VIRIDIS5, etiquetas_var),
                         unsafe_allow_html=True,
                     )
-
-        st.divider()
-
-        st.markdown("**Vegetación (NDVI)**")
-        if not vegetacion_disponible(gid):
-            st.info("Sin datos de vegetación para esta localidad.")
-        else:
-            col_veg_mapa, col_veg_leyenda = st.columns([3, 1])
-            with col_veg_mapa:
-                st.plotly_chart(figura_animada_vegetacion(gid), width=720)
-            with col_veg_leyenda:
+        with col_v4:
+            st.markdown("**Vegetación (NDVI)**")
+            if not vegetacion_disponible(gid):
+                st.info("Sin datos de vegetación para esta localidad.")
+            else:
+                st.plotly_chart(figura_animada_vegetacion(gid), width=230)
                 st.markdown(
                     caja_leyenda_html("NDVI", PALETA_VIRIDIS5, CATEGORIAS_NDVI),
                     unsafe_allow_html=True,
