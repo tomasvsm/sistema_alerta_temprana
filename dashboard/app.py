@@ -195,29 +195,37 @@ class ControlRecentrar(MacroElement):
 
 
 class ControlNorte(MacroElement):
-    """Flecha de norte minimalista (Leaflet no trae una propia) -- como
-    L.Control propio, se apila solo debajo del selector de capas en la
-    esquina superior derecha, sin pisarlo."""
+    """Flecha de norte minimalista (Leaflet no trae una propia) -- icono
+    suelto sin recuadro/marco (no es un boton, no tiene click), con un
+    leve halo blanco para que se lea bien sobre cualquier fondo del
+    mapa base. Como L.Control propio, se apila solo debajo del selector
+    de capas en la esquina superior derecha, sin pisarlo."""
 
     _template = Template("""
         {% macro script(this, kwargs) %}
         (function() {
             var mapa = {{ this._parent.get_name() }};
-            var ControlBtn = L.Control.extend({
+            var ControlIcono = L.Control.extend({
                 options: {position: 'topright'},
                 onAdd: function() {
-                    var caja = L.DomUtil.create('div', 'leaflet-bar');
-                    caja.style.cssText = 'width:30px;height:30px;background:white;' +
-                        'display:flex;align-items:center;justify-content:center;';
-                    caja.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24">' +
-                        '<polygon points="12,3 16,14 12,11 8,14" fill="black"/>' +
-                        '<text x="12" y="22" text-anchor="middle" font-size="8" ' +
-                        'font-family="sans-serif" fill="black">N</text></svg>';
-                    caja.title = 'Norte';
+                    var caja = L.DomUtil.create('div', '');
+                    caja.style.cssText = 'width:22px;height:30px;display:flex;' +
+                        'align-items:center;justify-content:center;pointer-events:none;';
+                    caja.innerHTML =
+                        '<svg width="18" height="26" viewBox="0 0 18 26" ' +
+                        'style="filter:drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white) ' +
+                        'drop-shadow(0 0 1.5px white);">' +
+                        '<text x="9" y="9" text-anchor="middle" font-size="9" ' +
+                        'font-family="sans-serif" font-weight="600" fill="#333">N</text>' +
+                        '<line x1="9" y1="24" x2="9" y2="13" stroke="#333" stroke-width="1.6" ' +
+                        'stroke-linecap="round"/>' +
+                        '<polyline points="5,17 9,11 13,17" fill="none" stroke="#333" ' +
+                        'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+                        '</svg>';
                     return caja;
                 },
             });
-            mapa.addControl(new ControlBtn());
+            mapa.addControl(new ControlIcono());
         })();
         {% endmacro %}
     """)
@@ -230,12 +238,23 @@ class ControlNorte(MacroElement):
 class ControlEscala(MacroElement):
     """Barra de escala solo metrica (Leaflet trae metrica+imperial por
     defecto via folium control_scale=True, pero imperial no aporta nada
-    aca y suma ruido visual)."""
+    aca y suma ruido visual). Tipografia mas fina que la que trae
+    Leaflet por defecto (heredada del resto del dashboard, no la
+    generica del navegador)."""
 
     _template = Template("""
         {% macro script(this, kwargs) %}
-        L.control.scale({imperial: false, position: 'bottomleft'})
-            .addTo({{ this._parent.get_name() }});
+        (function() {
+            var escala = L.control.scale({imperial: false, position: 'bottomleft'})
+                .addTo({{ this._parent.get_name() }});
+            var linea = escala.getContainer().querySelector('.leaflet-control-scale-line');
+            if (linea) {
+                linea.style.cssText += 'border-color:rgba(0,0,0,0.45); ' +
+                    'background:rgba(255,255,255,0.8); ' +
+                    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; ' +
+                    'font-size:10px; font-weight:400; color:#444; padding:1px 5px;';
+            }
+        })();
         {% endmacro %}
     """)
 
