@@ -797,11 +797,11 @@ def figura_animada_idoneidad(gid: str) -> go.Figure:
     fig.update_layout(
         # aspect="equal" fuerza el raster (cuadrado) a ocupar un
         # cuadrado centrado dentro del lienzo -- si height queda muy
-        # chico respecto al width (720), ese cuadrado termina chiquito y
+        # chico respecto al width (500), ese cuadrado termina chiquito y
         # perdido, con la barra de tiempo (que si ocupa el ancho
-        # completo) pareciendo enorme al lado. height=740 le da lugar al
-        # cuadrado para acercarse a los 720 de ancho.
-        height=740, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
+        # completo) pareciendo enorme al lado. height=590 le da lugar al
+        # cuadrado para acercarse a los 500 de ancho.
+        height=590, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
     )
     for i, frame in enumerate(fig.frames):
         frame.name = fechas[i]
@@ -1208,13 +1208,13 @@ with tab_panel:
             )
             st.plotly_chart(fig_serie, width=950)
 
-    with st.expander("Variables espaciales (MCDA)"):
+    with st.expander("Índice de idoneidad de hábitat y variables espaciales utilizadas"):
         st.markdown("**Índice de idoneidad de hábitat**")
         if not semanas_idoneidad_disponibles(gid):
             st.info("Sin datos de idoneidad para esta localidad.")
         else:
             with st.container(horizontal=True, vertical_alignment="center"):
-                st.plotly_chart(figura_animada_idoneidad(gid), width=720)
+                st.plotly_chart(figura_animada_idoneidad(gid), width=500)
                 etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
                 st.markdown(
                     caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
@@ -1223,6 +1223,7 @@ with tab_panel:
 
         st.divider()
 
+        st.markdown("**Variables espaciales**")
         col_v1, col_v2, col_v3, col_v4 = st.columns(4)
         for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
             with col:
