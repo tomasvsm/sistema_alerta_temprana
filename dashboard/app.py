@@ -1283,6 +1283,11 @@ with tab_panel:
         else:
             hoy = pd.Timestamp(date.today())
             ventana = df_met
+            # el CSV del modelo trae tanto clima observado como
+            # pronosticado (mismo archivo, sin columna que distinga uno
+            # de otro) -- fin_pronost es simplemente la ultima fecha
+            # disponible, que cae unos dias despues de hoy.
+            fin_pronost = ventana["date"].max()
 
             fig_met = go.Figure()
             fig_met.add_trace(go.Bar(
@@ -1297,6 +1302,12 @@ with tab_panel:
                 x=ventana["date"], y=ventana["rh"],
                 name="Humedad relativa (%)", line=dict(color="#5aa469"), yaxis="y2",
             ))
+            if fin_pronost > hoy:
+                fig_met.add_vrect(x0=hoy, x1=fin_pronost, fillcolor="gray", opacity=0.08, line_width=0)
+                fig_met.add_annotation(
+                    x=hoy + (fin_pronost - hoy) / 2, y=1, yref="paper", yanchor="top",
+                    text="Pronóstico", showarrow=False, font=dict(size=10, color="gray"),
+                )
             fig_met.add_vline(x=hoy, line_dash="dot", line_color="gray")
             fig_met.update_layout(
                 height=350, margin=dict(t=50, b=10, l=10, r=10),
@@ -1305,10 +1316,12 @@ with tab_panel:
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
                 # Datos completos desde siempre en el grafico (autoscale
                 # los muestra), pero al abrir arranca con zoom al ultimo
-                # año -- el rango largo completo casi no se distingue.
+                # año hasta el final del pronostico -- el rango largo
+                # completo casi no se distingue, y antes se cortaba
+                # justo en "hoy" dejando afuera los dias pronosticados.
                 xaxis=dict(
                     tickformatstops=TICKFORMATSTOPS_FECHA,
-                    range=[hoy - pd.Timedelta(days=365), hoy],
+                    range=[hoy - pd.Timedelta(days=365), fin_pronost + pd.Timedelta(days=1)],
                 ),
             )
             st.plotly_chart(fig_met, width=960)
