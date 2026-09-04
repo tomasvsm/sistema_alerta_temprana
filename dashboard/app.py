@@ -857,7 +857,7 @@ TICKFORMATSTOPS_FECHA = [
 
 def fig_indice_oviposicion(df_ovip: pd.DataFrame, titulo: str, dias_atras: int | None, height: int) -> go.Figure:
     """dias_atras=None -> serie completa disponible, sin recortar."""
-    hoy = pd.Timestamp(date.today())
+    hoy = fecha_referencia()
     real = df_ovip[df_ovip["date"] <= hoy]
     pronost = df_ovip[df_ovip["date"] >= hoy]
 
@@ -895,6 +895,20 @@ def cargar_estado_orquestador() -> dict | None:
         return None
     with open(ESTADO_JSON) as f:
         return json.load(f)
+
+
+def fecha_referencia() -> pd.Timestamp:
+    """Fecha de referencia para separar "confirmado" de "pronosticado"
+    en los graficos: NO es el reloj del sistema (date.today() puede caer
+    cualquier dia de la semana) sino la fecha de la ultima corrida
+    semanal del orquestador (fecha_ref en estado_ultima_corrida.json) --
+    el pipeline corre una vez por semana, asi que "hoy" para los datos
+    casi siempre es unos dias anterior al dia real en que se abre el
+    dashboard."""
+    estado = cargar_estado_orquestador()
+    if estado is None:
+        return pd.Timestamp(date.today())
+    return pd.Timestamp(estado["fecha_ref"])
 
 
 # --------------------------------------------------------------------------
@@ -1281,7 +1295,7 @@ with tab_panel:
         if df_met is None:
             st.info("Sin datos meteorológicos para esta localidad.")
         else:
-            hoy = pd.Timestamp(date.today())
+            hoy = fecha_referencia()
             ventana = df_met
             # el CSV del modelo trae tanto clima observado como
             # pronosticado (mismo archivo, sin columna que distinga uno
