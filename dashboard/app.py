@@ -624,7 +624,13 @@ def figura_animada_idoneidad(gid: str) -> go.Figure:
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        height=420, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
+        # aspect="equal" fuerza el raster (cuadrado) a ocupar un
+        # cuadrado centrado dentro del lienzo -- si height queda muy
+        # chico respecto al width (720), ese cuadrado termina chiquito y
+        # perdido, con la barra de tiempo (que si ocupa el ancho
+        # completo) pareciendo enorme al lado. height=740 le da lugar al
+        # cuadrado para acercarse a los 720 de ancho.
+        height=740, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
     )
     for i, frame in enumerate(fig.frames):
         frame.name = fechas[i]
@@ -637,6 +643,7 @@ def figura_animada_idoneidad(gid: str) -> go.Figure:
         nuevos_steps.append(step_dict)
     slider.steps = nuevos_steps
     slider.currentvalue = dict(prefix="Semana: ")
+    slider.pad = dict(t=10)
 
     ultimo = len(fig.frames) - 1
     fig.data[0].z = fig.frames[ultimo].data[0].z
