@@ -458,6 +458,10 @@ VARIABLES_ESTATICAS = {
     ),
 }
 CATEGORIAS_NDVI = ["Sin vegetación", "Muy densa", "Muy escasa", "Escasa", "Moderada"]
+# Las 4 variables estaticas + NDVI comparten esta codificacion cruda de
+# pixel (0, 0.25, 0.5, 0.75, 1), en el mismo orden que sus listas de
+# categorias de arriba -- ver caja_leyenda_html.
+VALORES_CATEGORIA_5 = ["0", "0.25", "0.5", "0.75", "1"]
 
 
 @st.cache_data
@@ -469,11 +473,16 @@ def cargar_variable_estatica(gid: str, variable: str) -> np.ndarray | None:
     return cargar_raster_nativo(str(ruta), gid=gid)
 
 
-def caja_leyenda_html(titulo: str, colores: list[str], etiquetas: list[str]) -> str:
+def caja_leyenda_html(
+    titulo: str, colores: list[str], etiquetas: list[str], valores: list[str] | None = None
+) -> str:
     """Recuadro de referencia con titulo y una fila por categoria (cuadrado
     de color + texto) -- mismo estilo que las leyendas de
     manuscrito/figuras/variables*.png, en vez de un listado de texto
-    suelto."""
+    suelto. Si se pasan valores (el codigo crudo del pixel, ej. "0.25"),
+    se muestran como "valor (significado)"."""
+    if valores is not None:
+        etiquetas = [f"{v} ({e})" for v, e in zip(valores, etiquetas)]
     filas = "".join(
         '<div style="display:flex; align-items:center; gap:6px; margin:2px 0;">'
         f'<span style="width:12px; height:12px; border-radius:2px; background:{c}; '
@@ -1044,7 +1053,10 @@ with tab_panel:
                         )
                         st.plotly_chart(figura_categorica_5(arr_var), width=230)
                         st.markdown(
-                            caja_leyenda_html(titulo_var, PALETA_VIRIDIS5, etiquetas_var),
+                            caja_leyenda_html(
+                                titulo_var, PALETA_VIRIDIS5, etiquetas_var,
+                                valores=VALORES_CATEGORIA_5,
+                            ),
                             unsafe_allow_html=True,
                         )
         with col_v4:
@@ -1060,7 +1072,10 @@ with tab_panel:
                     )
                     st.plotly_chart(figura_animada_vegetacion(gid), width=230)
                     st.markdown(
-                        caja_leyenda_html("NDVI", PALETA_VIRIDIS5, CATEGORIAS_NDVI),
+                        caja_leyenda_html(
+                            "NDVI", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
+                            valores=VALORES_CATEGORIA_5,
+                        ),
                         unsafe_allow_html=True,
                     )
 
