@@ -35,6 +35,7 @@ from rasterio.warp import transform_geom as rio_transform_geom
 from streamlit_folium import st_folium
 import folium
 from folium import MacroElement
+from folium.plugins import MousePosition
 from jinja2 import Template
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -191,6 +192,56 @@ class ControlRecentrar(MacroElement):
         super().__init__()
         self._name = "ControlRecentrar"
         self.bounds = bounds
+
+
+class ControlNorte(MacroElement):
+    """Flecha de norte minimalista (Leaflet no trae una propia) -- como
+    L.Control propio, se apila solo debajo del selector de capas en la
+    esquina superior derecha, sin pisarlo."""
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        (function() {
+            var mapa = {{ this._parent.get_name() }};
+            var ControlBtn = L.Control.extend({
+                options: {position: 'topright'},
+                onAdd: function() {
+                    var caja = L.DomUtil.create('div', 'leaflet-bar');
+                    caja.style.cssText = 'width:30px;height:30px;background:white;' +
+                        'display:flex;align-items:center;justify-content:center;';
+                    caja.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24">' +
+                        '<polygon points="12,3 16,14 12,11 8,14" fill="black"/>' +
+                        '<text x="12" y="22" text-anchor="middle" font-size="8" ' +
+                        'font-family="sans-serif" fill="black">N</text></svg>';
+                    caja.title = 'Norte';
+                    return caja;
+                },
+            });
+            mapa.addControl(new ControlBtn());
+        })();
+        {% endmacro %}
+    """)
+
+    def __init__(self):
+        super().__init__()
+        self._name = "ControlNorte"
+
+
+class ControlEscala(MacroElement):
+    """Barra de escala solo metrica (Leaflet trae metrica+imperial por
+    defecto via folium control_scale=True, pero imperial no aporta nada
+    aca y suma ruido visual)."""
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        L.control.scale({imperial: false, position: 'bottomleft'})
+            .addTo({{ this._parent.get_name() }});
+        {% endmacro %}
+    """)
+
+    def __init__(self):
+        super().__init__()
+        self._name = "ControlEscala"
 
 
 class RecalcularAlMostrar(MacroElement):
@@ -1041,6 +1092,12 @@ with tab_panel:
             m.fit_bounds(bounds)
 
             ControlRecentrar(bounds).add_to(m)
+            ControlNorte().add_to(m)
+            ControlEscala().add_to(m)
+            MousePosition(
+                position="bottomleft", separator=" · ", num_digits=4,
+                prefix="", empty_string="", font_size="11px",
+            ).add_to(m)
 
             st_folium(m, height=460, width=610, returned_objects=[])
 
