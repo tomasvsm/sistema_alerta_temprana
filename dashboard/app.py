@@ -93,6 +93,15 @@ CATEGORIAS = ["Actividad baja", "Actividad media", "Actividad alta", "Actividad 
 # rasters de sigma existentes (0.129).
 VMAX_SIGMA = 0.15
 
+# El dashboard es un contenedor persistente (docker run -d --restart
+# unless-stopped) que el orquestador NUNCA reinicia despues de la
+# corrida semanal -- st.cache_data sin ttl se queda con los datos de la
+# primera vez que se llamo cada funcion para siempre, y el dashboard
+# podia quedar mostrando la semana vieja indefinidamente hasta un
+# reinicio manual. 1h alcanza sobra para notar una corrida nueva sin
+# recalcular todo en cada rerun.
+CACHE_TTL = "1h"
+
 
 def bounds_categoricos(gid: str) -> list[float]:
     q33, q66 = TERCILES_CAMPO[gid]
@@ -460,7 +469,7 @@ def semaforo_html(codigo_activo: int) -> str:
     )
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def semanas_disponibles(gid: str) -> list[str]:
     patron = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})_{gid}_indice_actividad\.tif$")
     fechas = [m.group(1) for f in IA_DIR.iterdir() if (m := patron.match(f.name))]
@@ -481,7 +490,7 @@ def cargar_ejidos() -> dict[str, dict]:
     return {feat["properties"]["gid"]: feat["geometry"] for feat in data["features"]}
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def _mascara_ejido(gid: str, shape: tuple[int, int], transform_coefs: tuple, crs_str: str) -> np.ndarray:
     """Mascara booleana (True = dentro del ejido) rasterizada al grid
     puntual de un raster -- no todos los rasters de un mismo gid comparten
@@ -500,7 +509,7 @@ def enmascarar_por_ejido(arr: np.ndarray, gid: str, transform, crs) -> np.ndarra
     return np.where(mascara, arr, np.nan)
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def cargar_raster_4326(path: str, gid: str | None = None):
     """Reproyecta a EPSG:4326 y devuelve (array, bounds) listos para folium."""
     with rasterio.open(path) as src:
@@ -516,7 +525,7 @@ def cargar_raster_4326(path: str, gid: str | None = None):
     return arr, [[bounds.bottom, bounds.left], [bounds.top, bounds.right]]
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def contorno_roi_4326(gid: str) -> list[list[list[float]]]:
     """Anillos (poligono principal + eventuales islas, ej. Villa Maria) del
     limite real del ejido de la localidad -- no la ROI cuadrada usada para
@@ -558,7 +567,7 @@ def raster_a_imagen_rgba_viridis5(arr: np.ndarray) -> np.ndarray:
     return (rgba * 255).astype(np.uint8)
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def cargar_raster_nativo(path: str, gid: str | None = None) -> np.ndarray:
     """Lee el raster en su CRS original (5346), sin reproyectar -- para
     graficos estaticos (matplotlib) que no van sobre un mapa base."""
@@ -573,7 +582,7 @@ def cargar_raster_nativo(path: str, gid: str | None = None) -> np.ndarray:
     return arr
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def serie_temporal_indice_actividad(gid: str) -> pd.DataFrame:
     """Promedio y maximo espacial del indice de actividad, por semana."""
     filas = []
@@ -582,6 +591,8 @@ def serie_temporal_indice_actividad(gid: str) -> pd.DataFrame:
         if np.all(np.isnan(arr)):
             continue
         filas.append({"date": fecha, "media": np.nanmean(arr), "maximo": np.nanmax(arr)})
+    if not filas:
+        return pd.DataFrame(columns=["date", "media", "maximo"])
     df = pd.DataFrame(filas)
     df["date"] = pd.to_datetime(df["date"])
     return df.sort_values("date")
@@ -629,7 +640,7 @@ CATEGORIAS_NDVI = ["Sin vegetación", "Muy densa", "Muy escasa", "Escasa", "Mode
 VALORES_CATEGORIA_5 = ["0", "0.25", "0.5", "0.75", "1"]
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def cargar_variable_estatica_4326(gid: str, variable: str):
     """Reproyectada a EPSG:4326 (array, bounds) para mostrarse sobre un
     mapa base real (Folium), igual que el indice de actividad."""
@@ -688,7 +699,7 @@ def caja_leyenda_html(
     )
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def vegetacion_disponible(gid: str) -> dict[str, str]:
     """fecha de fin -> ruta al NDVI categorico de esa semana."""
     nombre = GID_SNAKE[gid]
@@ -709,7 +720,7 @@ def vegetacion_disponible(gid: str) -> dict[str, str]:
     return resultado
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def stack_vegetacion(gid: str) -> tuple[np.ndarray, list[str]]:
     disponibles = vegetacion_disponible(gid)
     fechas = sorted(disponibles.keys())
@@ -754,7 +765,7 @@ def figura_animada_vegetacion(gid: str) -> go.Figure:
     return fig
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def semanas_idoneidad_disponibles(gid: str) -> list[str]:
     patron = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})_{gid}_MCDA\.tif$")
     if not MCDA_DIR.is_dir():
@@ -763,7 +774,7 @@ def semanas_idoneidad_disponibles(gid: str) -> list[str]:
     return sorted(fechas)
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def stack_idoneidad(gid: str) -> tuple[np.ndarray, list[str]]:
     """Todas las semanas de idoneidad (MCDA) disponibles, categorizadas en
     4 clases lineales (cuartos del rango [0,1]) y con los mismos
@@ -823,7 +834,7 @@ def figura_animada_idoneidad(gid: str) -> go.Figure:
     return fig
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def cargar_indice_oviposicion(gid: str) -> pd.DataFrame | None:
     nombre = GID_SNAKE[gid]
     candidatos = sorted(MODELO_DIR.glob(f"*_{gid}_{nombre}_indice_oviposicion.csv"))
@@ -833,7 +844,7 @@ def cargar_indice_oviposicion(gid: str) -> pd.DataFrame | None:
     return df
 
 
-@st.cache_data
+@st.cache_data(ttl=CACHE_TTL)
 def cargar_serie_meteorologica(gid: str) -> pd.DataFrame | None:
     nombre = GID_SNAKE[gid]
     candidatos = sorted(MODELO_DIR.glob(f"*_{gid}_{nombre}_modelo.csv"))
@@ -1091,7 +1102,13 @@ with tab_panel:
     ia_path = IA_DIR / f"{semana}_{gid}_indice_actividad.tif"
     sigma_path = IA_DIR / f"{semana}_{gid}_sigma.tif"
     arr_ia, bounds = cargar_raster_4326(str(ia_path), gid=gid)
-    codigo_activo = codigo_categoria_maxima(gid, arr_ia)
+    # El semaforo usa el raster nativo (mismo que serie_temporal_indice_
+    # actividad para el "maximo espacial") en vez del reproyectado a
+    # 4326 -- cada uno aplica su propia mascara de ejido por separado
+    # (distinto shape/transform), y podian discrepar levemente en
+    # pixeles del borde del ejido si se mezclaban las dos fuentes.
+    arr_ia_nativo = cargar_raster_nativo(str(ia_path), gid=gid)
+    codigo_activo = codigo_categoria_maxima(gid, arr_ia_nativo)
 
     with col_semaforo:
         st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
