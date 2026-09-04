@@ -35,7 +35,6 @@ from rasterio.warp import transform_geom as rio_transform_geom
 from streamlit_folium import st_folium
 import folium
 from folium import MacroElement
-from folium.plugins import MousePosition
 from jinja2 import Template
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -212,15 +211,14 @@ class ControlNorte(MacroElement):
                     caja.style.cssText = 'width:22px;height:30px;display:flex;' +
                         'align-items:center;justify-content:center;pointer-events:none;';
                     caja.innerHTML =
-                        '<svg width="18" height="26" viewBox="0 0 18 26" ' +
+                        '<svg width="16" height="30" viewBox="0 0 16 30" ' +
                         'style="filter:drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white) ' +
                         'drop-shadow(0 0 1.5px white);">' +
-                        '<text x="9" y="9" text-anchor="middle" font-size="9" ' +
+                        '<text x="8" y="9" text-anchor="middle" font-size="8" ' +
                         'font-family="sans-serif" font-weight="600" fill="#333">N</text>' +
-                        '<line x1="9" y1="24" x2="9" y2="13" stroke="#333" stroke-width="1.6" ' +
-                        'stroke-linecap="round"/>' +
-                        '<polyline points="5,17 9,11 13,17" fill="none" stroke="#333" ' +
-                        'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+                        '<polygon points="8,12 4,27 8,23" fill="#333"/>' +
+                        '<polygon points="8,12 12,27 8,23" fill="white" stroke="#333" ' +
+                        'stroke-width="0.75" stroke-linejoin="round"/>' +
                         '</svg>';
                     return caja;
                 },
@@ -261,6 +259,46 @@ class ControlEscala(MacroElement):
     def __init__(self):
         super().__init__()
         self._name = "ControlEscala"
+
+
+class ControlCoordenadas(MacroElement):
+    """Coordenadas del cursor, con la misma tipografia y tamaño que
+    ControlEscala (el plugin folium.plugins.MousePosition trae su propia
+    tipografia fija, mucho mas grande, y no se puede reducir via sus
+    parametros -- por eso un control propio en vez de ese plugin,
+    ademas de evitar sumar una dependencia JS/CSS externa via CDN)."""
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        (function() {
+            var mapa = {{ this._parent.get_name() }};
+            var estiloTexto = 'background:rgba(255,255,255,0.8); padding:1px 5px; ' +
+                'border:1.5px solid rgba(0,0,0,0.45); ' +
+                'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; ' +
+                'font-size:10px; font-weight:400; color:#444; white-space:nowrap;';
+            var ControlCoords = L.Control.extend({
+                options: {position: 'bottomright'},
+                onAdd: function() {
+                    var caja = L.DomUtil.create('div', '');
+                    caja.style.cssText = estiloTexto;
+                    caja.innerHTML = '&nbsp;';
+                    return caja;
+                },
+            });
+            var control = new ControlCoords();
+            mapa.addControl(control);
+            var elemento = control.getContainer();
+            mapa.on('mousemove', function(e) {
+                elemento.innerHTML = e.latlng.lat.toFixed(4) + ' · ' + e.latlng.lng.toFixed(4);
+            });
+            mapa.on('mouseout', function() { elemento.innerHTML = '&nbsp;'; });
+        })();
+        {% endmacro %}
+    """)
+
+    def __init__(self):
+        super().__init__()
+        self._name = "ControlCoordenadas"
 
 
 class RecalcularAlMostrar(MacroElement):
@@ -1113,10 +1151,7 @@ with tab_panel:
             ControlRecentrar(bounds).add_to(m)
             ControlNorte().add_to(m)
             ControlEscala().add_to(m)
-            MousePosition(
-                position="bottomleft", separator=" · ", num_digits=4,
-                prefix="", empty_string="", font_size="11px",
-            ).add_to(m)
+            ControlCoordenadas().add_to(m)
 
             st_folium(m, height=460, width=610, returned_objects=[])
 
