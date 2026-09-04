@@ -68,7 +68,7 @@ docker run --rm \
 "
 
 # --- Paso 3: vegetacion de la semana actual (host, necesita GRASS) ------
-correr_paso "vegetacion" bash "$REPO_ROOT/espacializacion/scripts/run_veg_backfill.sh"
+correr_paso "vegetacion" bash "$REPO_ROOT/espacializacion/scripts/run_veg_backfill.sh" "$FECHA_REF"
 
 # --- Paso 4: MCDA (idoneidad espacial), host -----------------------------
 correr_paso "mcda" bash "$REPO_ROOT/espacializacion/scripts/correr_mcda_todas.sh"
@@ -79,7 +79,7 @@ docker run --rm \
   -v $REPO_ROOT/espacializacion/data/vegetacion:/app/data/vegetacion:ro \
   -v $REPO_ROOT/espacializacion/output:/app/output \
   -v $REPO_ROOT/modelo-temporal/output:/app/../modelo-temporal/output:ro \
-  geoprocesos:test python3 src/calculo_indice_actividad.py
+  geoprocesos:test python3 src/calculo_indice_actividad.py $FECHA_REF
 "
 
 # --- Resumen final --------------------------------------------------------

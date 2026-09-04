@@ -130,7 +130,12 @@ def get_date_window(ref_date, days_back):
     tuple[str, str]
         (start_date, end_date) en formato 'YYYY-MM-DD'.
     """
-    start = ref_date - timedelta(days=days_back)
+    # days_back=7 debe dar una ventana de 7 dias CALENDARIO inclusive
+    # (ref_date - 6 .. ref_date), no 8 -- "- days_back" a secas cuenta
+    # ref_date como un noveno dia extra. Mismo criterio que ya usa
+    # correctamente el loop de reintento por nubes mas abajo
+    # (`current_end - timedelta(days=DAYS_BACK - 1)`).
+    start = ref_date - timedelta(days=days_back - 1)
     return start.strftime("%Y-%m-%d"), ref_date.strftime("%Y-%m-%d")
 
 

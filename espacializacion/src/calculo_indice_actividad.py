@@ -22,12 +22,18 @@ modelo-temporal/src/calcular_indice_oviposicion.py (un CSV por localidad,
 serie continua) -- no hace falta un paso intermedio como antes.
 
 Uso:
-  python3 calculo_indice_actividad.py
+  python3 calculo_indice_actividad.py [fecha_ref]
+
+  fecha_ref (YYYY-MM-DD, opcional): fecha de referencia de la corrida
+  (el martes ancla que pasa run_semanal.sh) -- una semana con end_date
+  posterior a fecha_ref se rechaza por ser pronostico. Sin argumento
+  usa la fecha real del sistema (uso manual suelto).
 """
 
 import datetime
 import os
 import re
+import sys
 import numpy as np
 import pandas as pd
 import rasterio
@@ -89,7 +95,7 @@ def load_oviposicion_csv(gid):
     return df.sort_values("date").reset_index(drop=True)
 
 
-def get_daily_oviposicion(df, end_date_str):
+def get_daily_oviposicion(df, end_date_str, hoy):
     """
     Extrae los 7 valores diarios del índice de oviposición para la semana
     que termina en end_date_str, con piso mínimo aplicado.
@@ -106,6 +112,11 @@ def get_daily_oviposicion(df, end_date_str):
     2026-09-02, confirmado con el CSV de Córdoba llegando hasta
     2026-09-11 mientras la corrida real era del 2026-09-02.
 
+    "hoy" es la fecha de referencia de la corrida (fecha_ref del
+    orquestador, el martes ancla), NO datetime.date.today() -- en una
+    corrida tardia (ej. jueves porque el martes no se pudo) el reloj
+    real ya paso el corte y dejaria colar una semana de mas.
+
     Returns
     -------
     list[float] o None
@@ -113,10 +124,17 @@ def get_daily_oviposicion(df, end_date_str):
         días, o si la semana se extiende mas alla de hoy.
     """
     end_date = pd.to_datetime(end_date_str)
-    if end_date.date() > datetime.date.today():
+    if end_date.date() > hoy:
         return None
     week = df[(df["date"] > end_date - pd.Timedelta(days=7)) & (df["date"] <= end_date)]
-    if len(week) < 7:
+    # len(week) < 7 solo detecta filas FALTANTES -- una fila presente
+    # pero con indice_oviposicion en NaN (posible con huecos de clima
+    # sin rellenar, ver bug de latencia IMERG) pasaba este chequeo y
+    # despues max(nan, FLOOR) devuelve nan (semantica de comparacion de
+    # NaN en Python), que np.nanmean descartaba en silencio en
+    # compute_indice_actividad -- el promedio terminaba siendo sobre 6
+    # dias en vez de 7, sin quedar registrado en ningun lado.
+    if len(week) < 7 or week["indice_oviposicion"].isna().any():
         return None
     valores = [max(float(v), OVIPOSICION_FLOOR) for v in week["indice_oviposicion"]]
     return valores
@@ -151,12 +169,14 @@ def save_tiff(arr, ref_path, out_path):
 # MAIN
 # =========================================================
 
-def main():
+def main(fecha_ref=None):
+    hoy = datetime.date.fromisoformat(fecha_ref) if fecha_ref else datetime.date.today()
     print("\n=== ÍNDICE DE ACTIVIDAD DE AEDES AEGYPTI (idoneidad × oviposición) ===\n")
     print(f"  MCDA (idoneidad) dir:   {MCDA_DIR}")
     print(f"  Oviposición dir:        {OVIPOSICION_DIR}")
     print(f"  Salida:                 {OUTPUT_DIR}")
-    print(f"  Piso oviposición:       {OVIPOSICION_FLOOR}\n")
+    print(f"  Piso oviposición:       {OVIPOSICION_FLOOR}")
+    print(f"  Fecha de referencia:    {hoy}\n")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -190,7 +210,7 @@ def main():
             n_err += 1
             continue
 
-        oviposicion_daily = get_daily_oviposicion(df_ovip, end_date_str)
+        oviposicion_daily = get_daily_oviposicion(df_ovip, end_date_str, hoy)
         if oviposicion_daily is None:
             print(f"  [AVISO] Sin oviposición completa para gid={gid} fecha={end_date_str}: saltando.")
             n_sin_ovip += 1
@@ -225,4 +245,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    fecha_ref = sys.argv[1] if len(sys.argv) > 1 else None
+    main(fecha_ref)

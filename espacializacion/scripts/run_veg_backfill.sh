@@ -14,9 +14,17 @@ declare -A ROIS=(
   [salsipuedes]="resources/roi/roi_gid_1271_1000m.gpkg"
 )
 
+# $1 (opcional): fecha de referencia de la corrida (el martes ancla que
+# pasa run_semanal.sh) -- sin esto el backfill usaba siempre la fecha
+# real del sistema como limite superior, así que una corrida tardía
+# (ej. jueves porque el martes no se pudo) podía llegar a generar una
+# semana de vegetación de más respecto al resto del pipeline, que sí
+# queda anclado al martes.
+FECHA_REF="${1:-$(date +%Y-%m-%d)}"
+
 FECHAS=()
-cur="2025-07-08"
-end="$(date -d "today" +%Y-%m-%d)"
+cur="2025-01-07"
+end="$FECHA_REF"
 while [ "$(date -d "$cur" +%s)" -le "$(date -d "$end" +%s)" ]; do
   FECHAS+=("$cur")
   cur="$(date -d "$cur + 7 days" +%Y-%m-%d)"
@@ -35,8 +43,16 @@ for LOCALIDAD in "${!ROIS[@]}"; do
     N=$((N+1))
     FECHA_FIN="$(date -d "$FECHA + 7 days" +%Y-%m-%d)"
     OUTDIR="data/vegetacion/${LOCALIDAD}_${FECHA}_${FECHA_FIN}_vegetacion"
+    OUTNAME="${LOCALIDAD}_${FECHA}_${FECHA_FIN}_vegetacion"
+    RESULTADO_FINAL="$OUTDIR/outputs/final/${OUTNAME}_NDVI_cat_100m.tif"
 
-    if [ -d "$OUTDIR" ]; then
+    # Chequear el ARCHIVO FINAL, no la carpeta: calculo_vegetacion.py crea
+    # el arbol de carpetas (ensure_dirs) antes de descargar/procesar nada,
+    # asi que si el proceso se cae a mitad de camino (red, GRASS colgado,
+    # OOM-kill) la carpeta queda creada pero incompleta -- con el chequeo
+    # viejo (solo "existe la carpeta") esa semana quedaba salteada para
+    # siempre en todos los reintentos futuros, sin volver a procesarse.
+    if [ -f "$RESULTADO_FINAL" ]; then
       echo "[$N/$TOTAL_RUNS] $LOCALIDAD $FECHA ... SALTEADO (ya existe)"
       SKIP=$((SKIP+1))
       continue

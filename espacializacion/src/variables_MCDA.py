@@ -419,21 +419,26 @@ def process_construcciones(gid, paths, run_name, roi_path, use_5m_dem):
             )
             pixels = height_arr[poly_mask == 1]
             valid_pixels = pixels[~np.isnan(pixels)]
-            max_h = float(np.max(valid_pixels)) if len(valid_pixels) > 0 else 0.0
+            # NaN, no 0.0: un edificio sin ningun pixel valido de DEM/
+            # FABDEM debajo (ej. en el borde del ROI) es "sin dato", no
+            # "confirmado sin construccion" -- con 0.0 quedaba
+            # categorizado igual que si no hubiera edificio ahi.
+            max_h = float(np.max(valid_pixels)) if len(valid_pixels) > 0 else np.nan
         except Exception:
-            max_h = 0.0
+            max_h = np.nan
         max_heights.append(max_h)
 
     buildings["bh_maximum"] = max_heights
-    print(f"  Altura máxima calculada: max={max(max_heights):.1f}m, "
-          f"edificios con altura>0: {sum(h > 0 for h in max_heights)}")
+    print(f"  Altura máxima calculada: max={np.nanmax(max_heights):.1f}m, "
+          f"edificios con altura>0: {sum(h > 0 for h in max_heights)}, "
+          f"sin dato de altura: {sum(np.isnan(h) for h in max_heights)}")
 
     # --- Rasterizar altura máxima por polígono ---
     print("  Rasterizando altura máxima por polígono...")
     shapes_heights = [
         (geom, val)
         for geom, val in zip(buildings.geometry, buildings["bh_maximum"])
-        if geom is not None and not geom.is_empty
+        if geom is not None and not geom.is_empty and not np.isnan(val)
     ]
 
     height_max_raster = rio_rasterize(
@@ -483,8 +488,14 @@ def process_construcciones(gid, paths, run_name, roi_path, use_5m_dem):
     # --- Remuestrear a 100m (máximo) con rasterio ---
     print("  Remuestreando a 100m...")
     scale_factor = native_res / 100.0
-    new_height = max(1, int(cat_arr.shape[0] * scale_factor))
-    new_width  = max(1, int(cat_arr.shape[1] * scale_factor))
+    # round(), no int(): int() trunca (siempre para abajo), asi que el
+    # extent original se estira sobre menos pixeles de los que
+    # corresponden y el pixel de salida termina midiendo un poco mas de
+    # 100m -- probablemente la causa del desfase de grilla ya conocido
+    # entre "estaticas" (262x262) y vegetacion/MCDA/indice_actividad
+    # (263x263), que usan su propio remuestreo por separado.
+    new_height = max(1, round(cat_arr.shape[0] * scale_factor))
+    new_width  = max(1, round(cat_arr.shape[1] * scale_factor))
 
     from rasterio.transform import from_bounds
     from rasterio.enums import Resampling as RS
