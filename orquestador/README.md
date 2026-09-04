@@ -35,13 +35,36 @@ localidad/paso.
 
 ## Cron
 
-**Instalado** (2026-09-01), martes a las 06:00:
+**Instalado** (actualizado 2026-09-04), martes a las 06:00, 09:00 y 12:00:
 
 ```
 0 6 * * 2 /home/tomas/sistema_alerta_temprana/orquestador/scripts/run_semanal.sh >> /home/tomas/sistema_alerta_temprana/orquestador/logs/cron.log 2>&1
+0 9 * * 2 /home/tomas/sistema_alerta_temprana/orquestador/scripts/run_semanal.sh >> /home/tomas/sistema_alerta_temprana/orquestador/logs/cron.log 2>&1
+0 12 * * 2 /home/tomas/sistema_alerta_temprana/orquestador/scripts/run_semanal.sh >> /home/tomas/sistema_alerta_temprana/orquestador/logs/cron.log 2>&1
 ```
 
+Tres horarios en vez de uno: si la máquina estaba apagada o sin internet a
+las 6, el de las 9 reintenta la cadena completa; si ese también falla, el
+de las 12 reintenta una vez más. `run_semanal.sh` tiene un guard al
+principio que chequea `estado_ultima_corrida.json`: si la corrida de esa
+semana (mismo `fecha_ref`) ya salió sin errores, el llamado de las 9 o las
+12 no hace nada (no vuelve a descargar/recalcular todo de nuevo). Si las
+3 fallan, queda como estaba antes: cartel rojo en el log, esperando que
+se corra a mano.
+
 Para verla o editarla: `crontab -l` / `crontab -e`.
+
+## Notificaciones (ntfy.sh)
+
+Al final de cada corrida REAL (no en el fast-path de "ya estaba ok") se
+manda un push a `ntfy.sh/aedes-alerta-temprana-6f3d6bc9` -- uno de
+"terminó OK" o uno de "falló en: <pasos>" con el path al log. Para
+recibirlos en el celular: instalar la app **ntfy** (Android/iOS) y
+suscribirse al topic `aedes-alerta-temprana-6f3d6bc9`. No hace falta
+cuenta ni configuración del lado del servidor, ntfy.sh es gratis y el
+topic funciona como una contraseña débil (cualquiera que lo adivine
+podría publicar ahí) -- si el repo se hace público alguna vez, rotarlo
+(cambiar `NTFY_TOPIC` en `run_semanal.sh`).
 
 ## Corte semanal anclado al martes
 
@@ -65,8 +88,3 @@ bash /home/tomas/sistema_alerta_temprana/orquestador/scripts/run_semanal.sh
 
 (funciona desde cualquier directorio: el script calcula sus propias rutas)
 
-## Pendiente
-
-- Definir si el "cartel rojo" del log también dispara algo más activo
-  (mail, Slack) o si por ahora alcanza con quedar en el log para que el
-  dashboard lo lea.

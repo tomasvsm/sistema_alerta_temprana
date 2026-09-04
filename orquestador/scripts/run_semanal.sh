@@ -12,6 +12,13 @@
 # notifique con un cartel rojo").
 set -uo pipefail
 
+# Topic de ntfy.sh para las notificaciones de fin de corrida (push al
+# celular, gratis, sin cuenta: instalar la app ntfy y suscribirse a este
+# topic). No es un secreto fuerte -- cualquiera que lo adivine podria
+# mandar notificaciones falsas -- pero alcanza para uso personal. Si el
+# repo se hace publico alguna vez, rotarlo.
+NTFY_TOPIC="aedes-alerta-temprana-6f3d6bc9"
+
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FECHA_CORRIDA="$(date +%Y-%m-%d)"
 LOGDIR="$REPO_ROOT/orquestador/logs"
@@ -32,6 +39,29 @@ FECHA_REF="$(date -d "$FECHA_CORRIDA - $DIAS_DESDE_MARTES days" +%Y-%m-%d)"
 echo "======================================================="
 echo "  CORRIDA SEMANAL -- $FECHA_CORRIDA (referencia: martes $FECHA_REF)"
 echo "======================================================="
+
+# El cron llama a este script 3 veces los martes (6, 9 y 12hs) para poder
+# reintentar si la maquina estaba apagada o sin internet a las 6 -- pero
+# si la corrida de esta semana YA salio bien antes, no hace falta repetir
+# toda la cadena (serie redescargas/recomputos inutiles). Se pisa
+# igual si la corrida anterior tuvo error, para que el reintento de las
+# 9/12 la vuelva a intentar entera.
+ESTADO_JSON="$LOGDIR/estado_ultima_corrida.json"
+if [ -f "$ESTADO_JSON" ]; then
+    ya_ok="$(python3 -c "
+import json
+try:
+    e = json.load(open('$ESTADO_JSON'))
+    print('si' if e.get('fecha_ref') == '$FECHA_REF' and not e.get('hubo_error', True) else 'no')
+except Exception:
+    print('no')
+")"
+    if [ "$ya_ok" = "si" ]; then
+        echo "  La corrida de esta semana (ref $FECHA_REF) ya se completo sin errores."
+        echo "  Nada que hacer -- este llamado es uno de los reintentos programados (9/12hs)."
+        exit 0
+    fi
+fi
 
 declare -A ESTADO
 
@@ -106,7 +136,6 @@ echo "  Log completo: $LOGFILE"
 # historico) -- el dashboard solo necesita saber si HOY hay que mostrar el
 # cartel rojo o no. El log fechado (arriba) queda como historial para debug
 # manual, este JSON es la unica fuente que el dashboard deberia leer.
-ESTADO_JSON="$LOGDIR/estado_ultima_corrida.json"
 PASO_clima="${ESTADO[clima]:-no_corrido}" \
 PASO_modelo_temporal="${ESTADO[modelo_temporal]:-no_corrido}" \
 PASO_vegetacion="${ESTADO[vegetacion]:-no_corrido}" \
@@ -132,3 +161,26 @@ with open(os.environ["ESTADO_JSON"], "w") as f:
     json.dump(estado, f, indent=2, ensure_ascii=False)
 print(f"  Estado consolidado: {os.environ['ESTADO_JSON']}")
 PYEOF
+
+# --- Notificacion push (ntfy.sh) ------------------------------------------
+# Un aviso por corrida REAL (no en el fast-path de "ya estaba ok" de mas
+# arriba, para no mandar 3 avisos identicos los martes que salen bien a
+# las 6am). --max-time corta la notificacion si ntfy.sh esta caido, para
+# que nunca cuelgue el cron por esto.
+if [ "$hubo_error" -eq 1 ]; then
+    pasos_fallidos="$(for p in clima modelo_temporal vegetacion mcda indice_actividad; do
+        [[ "${ESTADO[$p]:-}" == ERROR* ]] && echo -n "$p "
+    done)"
+    curl -s --max-time 10 \
+        -H "Title: Alerta temprana Aedes -- corrida con errores" \
+        -H "Priority: high" \
+        -H "Tags: warning" \
+        -d "Corrida $FECHA_CORRIDA (ref $FECHA_REF) fallo en: $pasos_fallidos. Log: $LOGFILE" \
+        "ntfy.sh/$NTFY_TOPIC" > /dev/null || true
+else
+    curl -s --max-time 10 \
+        -H "Title: Alerta temprana Aedes -- corrida OK" \
+        -H "Tags: white_check_mark" \
+        -d "Corrida $FECHA_CORRIDA (ref $FECHA_REF) termino sin errores: clima, modelo_temporal, vegetacion, mcda, indice_actividad." \
+        "ntfy.sh/$NTFY_TOPIC" > /dev/null || true
+fi
