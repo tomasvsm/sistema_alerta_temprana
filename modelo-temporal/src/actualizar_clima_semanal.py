@@ -174,8 +174,16 @@ def main(fecha_ref=None):
     )
     print(f"\n=== Actualizacion de clima terminada -- {'CON ERRORES' if hubo_error else 'OK'} ===")
     print(f"Estado guardado en {ESTADO_PATH}")
+    return hubo_error
 
 
 if __name__ == "__main__":
     fecha_ref = sys.argv[1] if len(sys.argv) > 1 else None
-    main(fecha_ref)
+    # el exit code es lo que run_semanal.sh usa para decidir "ok"/"ERROR"
+    # en el resumen y en estado_ultima_corrida.json -- antes este script
+    # siempre salia con 0 aunque la descarga real hubiera fallado del
+    # todo (se restauraba el resguardo .bak en silencio, "clima" quedaba
+    # marcado "ok" y el cartel rojo nunca se disparaba). Confirmado en
+    # produccion: semanal_2026-09-01.log tuvo un HTTP 503 de GDEX/IMERG
+    # para las 4 localidades y el resumen igual dijo "ok".
+    sys.exit(1 if main(fecha_ref) else 0)

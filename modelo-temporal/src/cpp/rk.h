@@ -25,6 +25,14 @@ class RK{
                 tensor K_n4=dYdt(Y_j + h_j*K_n3, t + h_j, h_j, parameters);
 
                 Y_j = Y_j + (h_j/6.0)*(K_n1 + 2.0*K_n2 + 2.0*K_n3 + K_n4);
+                // Los estados (huevos/larvas/pupas/adultos) no pueden ser
+                // negativos por definicion. Sin este clamp, pasos con
+                // dinamica rigida (agua muy baja, mortalidad alta) pueden
+                // pisar valores negativos que se arrastran al resto de la
+                // integracion -- el motor Python/CUDA ya tiene este mismo
+                // clamp (rk.py linea 46: "this is to make rk work"), el
+                // motor C++ de produccion no lo tenia.
+                Y_j = Y_j.cwiseMax(0.0);
                 t=t+h_j;
             }
             Y.push_back(Y_j);

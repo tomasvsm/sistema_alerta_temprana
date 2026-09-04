@@ -64,7 +64,7 @@ correr_paso "modelo_temporal" sg docker -c "
 docker run --rm \
   -v $REPO_ROOT/modelo-temporal/data:/app/data \
   -v $REPO_ROOT/modelo-temporal/output:/app/output \
-  modelo-temporal:test python3 src/correr_modelo_4loc.py
+  modelo-temporal:test python3 src/correr_modelo_4loc.py $FECHA_REF
 "
 
 # --- Paso 3: vegetacion de la semana actual (host, necesita GRASS) ------

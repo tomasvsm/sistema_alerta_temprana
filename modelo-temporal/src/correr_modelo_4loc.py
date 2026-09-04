@@ -27,12 +27,17 @@ LOCALIDADES = [
 ]
 
 
-def main(end_date=None):
-    if end_date is None:
-        # extractForecastData usa daterange(hoy, hoy+FORECAST_RANGE) -- exclusivo
-        # del extremo superior, asi que el ultimo dia REAL de pronostico es
-        # hoy + FORECAST_RANGE - 1, no hoy + FORECAST_RANGE.
-        end_date = (datetime.date.today() + datetime.timedelta(days=gw.FORECAST_RANGE - 1)).strftime("%Y-%m-%d")
+def main(fecha_ref=None):
+    # fecha_ref: igual que en actualizar_clima_semanal.py, es "hoy" a los
+    # efectos de esta corrida -- el orquestador pasa el martes mas
+    # reciente, no la fecha real del sistema, para que una corrida tardia
+    # (ej. jueves porque el martes no se pudo) siga anclada al mismo corte
+    # semanal que el paso de clima, en vez de simular unos dias de mas.
+    hoy = datetime.date.fromisoformat(fecha_ref) if fecha_ref else datetime.date.today()
+    # extractForecastData usa daterange(hoy, hoy+FORECAST_RANGE) -- exclusivo
+    # del extremo superior, asi que el ultimo dia REAL de pronostico es
+    # hoy + FORECAST_RANGE - 1, no hoy + FORECAST_RANGE.
+    end_date = (hoy + datetime.timedelta(days=gw.FORECAST_RANGE - 1)).strftime("%Y-%m-%d")
 
     print(f"=== Corrida del modelo temporal -- hasta {end_date} ===\n")
 
@@ -55,5 +60,5 @@ def main(end_date=None):
 
 
 if __name__ == "__main__":
-    end_date = sys.argv[1] if len(sys.argv) > 1 else None
-    main(end_date)
+    fecha_ref = sys.argv[1] if len(sys.argv) > 1 else None
+    main(fecha_ref)
