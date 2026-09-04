@@ -208,16 +208,16 @@ class ControlNorte(MacroElement):
                 options: {position: 'topright'},
                 onAdd: function() {
                     var caja = L.DomUtil.create('div', '');
-                    caja.style.cssText = 'width:22px;height:30px;display:flex;' +
+                    caja.style.cssText = 'width:22px;height:20px;display:flex;' +
                         'align-items:center;justify-content:center;pointer-events:none;';
                     caja.innerHTML =
-                        '<svg width="16" height="30" viewBox="0 0 16 30" ' +
+                        '<svg width="16" height="20" viewBox="0 0 16 20" ' +
                         'style="filter:drop-shadow(0 0 1.5px white) drop-shadow(0 0 1.5px white) ' +
                         'drop-shadow(0 0 1.5px white);">' +
-                        '<text x="8" y="9" text-anchor="middle" font-size="8" ' +
+                        '<text x="8" y="7" text-anchor="middle" font-size="7" ' +
                         'font-family="sans-serif" font-weight="600" fill="#333">N</text>' +
-                        '<polygon points="8,12 4,27 8,23" fill="#333"/>' +
-                        '<polygon points="8,12 12,27 8,23" fill="white" stroke="#333" ' +
+                        '<polygon points="8,9 4,18 8,15" fill="#333"/>' +
+                        '<polygon points="8,9 12,18 8,15" fill="white" stroke="#333" ' +
                         'stroke-width="0.75" stroke-linejoin="round"/>' +
                         '</svg>';
                     return caja;
@@ -273,7 +273,6 @@ class ControlCoordenadas(MacroElement):
         (function() {
             var mapa = {{ this._parent.get_name() }};
             var estiloTexto = 'background:rgba(255,255,255,0.8); padding:1px 5px; ' +
-                'border:1.5px solid rgba(0,0,0,0.45); ' +
                 'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; ' +
                 'font-size:10px; font-weight:400; color:#444; white-space:nowrap;';
             var ControlCoords = L.Control.extend({
@@ -288,8 +287,11 @@ class ControlCoordenadas(MacroElement):
             var control = new ControlCoords();
             mapa.addControl(control);
             var elemento = control.getContainer();
+            // pegado al borde -- sin el margen de 10px que Leaflet le da
+            // por defecto a cualquier control en esa esquina.
+            elemento.parentElement.style.margin = '0';
             mapa.on('mousemove', function(e) {
-                elemento.innerHTML = e.latlng.lat.toFixed(4) + ' · ' + e.latlng.lng.toFixed(4);
+                elemento.innerHTML = e.latlng.lat.toFixed(3) + ' · ' + e.latlng.lng.toFixed(3);
             });
             mapa.on('mouseout', function() { elemento.innerHTML = '&nbsp;'; });
         })();
