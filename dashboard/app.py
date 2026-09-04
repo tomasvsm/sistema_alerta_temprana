@@ -1194,17 +1194,23 @@ with tab_panel:
             fig_serie.add_trace(go.Scatter(
                 x=df_serie["date"], y=df_serie["media"],
                 mode="lines+markers", name="Media espacial", line=dict(color="#d7191c"),
+                hovertemplate="Semana: %{x|%d/%m/%Y}<br>Media: %{y:.3f}<extra></extra>",
             ))
             fig_serie.add_trace(go.Scatter(
                 x=df_serie["date"], y=df_serie["maximo"],
                 mode="lines", name="Máximo espacial",
                 line=dict(color="#d7191c", dash="dot", width=1),
+                hovertemplate="Semana: %{x|%d/%m/%Y}<br>Máximo: %{y:.3f}<extra></extra>",
             ))
             fig_serie.update_layout(
                 height=420, margin=dict(t=30, b=10, l=10, r=10),
                 yaxis_title="Índice de actividad", xaxis_title=None,
                 legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
                 xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
+                # asi la fecha exacta de la semana se ve al pasar el
+                # mouse aunque los ticks del eje, a este zoom, solo
+                # alcancen a mostrar mes/año (no distinguen semana).
+                hovermode="x unified",
             )
             st.plotly_chart(fig_serie, width=950)
 
