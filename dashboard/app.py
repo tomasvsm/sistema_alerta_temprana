@@ -594,15 +594,20 @@ def semanas_idoneidad_disponibles(gid: str) -> list[str]:
 
 @st.cache_data
 def stack_idoneidad(gid: str) -> tuple[np.ndarray, list[str]]:
-    """Todas las semanas de idoneidad (MCDA) disponibles, ya categorizadas
-    con las mismas 4 categorias/colores del indice de actividad
-    (bounds_categoricos) -- ver semaforo_html."""
+    """Todas las semanas de idoneidad (MCDA) disponibles, categorizadas en
+    4 clases lineales (cuartos del rango [0,1]) y con los mismos
+    colores que el indice de actividad -- pero NO con los cortes de
+    Youden/terciles de bounds_categoricos(), que estan calibrados contra
+    el indice de actividad real (idoneidad x oviposicion, con fuerte
+    estacionalidad por el piso de oviposicion). El MCDA solo no tiene ese
+    factor estacional y su rango se mantiene medio-alto casi todo el
+    año en zona urbana, asi que esos cortes lo pintaban casi todo como
+    "alta"/"muy alta"."""
     fechas = semanas_idoneidad_disponibles(gid)
-    cortes = bounds_categoricos(gid)
     capas = []
     for fecha in fechas:
         arr = cargar_raster_nativo(str(MCDA_DIR / f"{fecha}_{gid}_MCDA.tif"), gid=gid)
-        codigo = np.digitize(arr, cortes[1:-1]).astype(float)
+        codigo = np.digitize(arr, [0.25, 0.5, 0.75]).astype(float)
         codigo[np.isnan(arr)] = np.nan
         capas.append(codigo)
     return np.stack(capas), fechas
