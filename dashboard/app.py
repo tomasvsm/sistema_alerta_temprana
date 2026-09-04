@@ -1061,19 +1061,19 @@ with tab_panel:
                         )
         with col_v4:
             if not vegetacion_disponible(gid):
-                st.markdown("**Vegetación (NDVI)**")
+                st.markdown("**Vegetación**")
                 st.info("Sin datos de vegetación para esta localidad.")
             else:
                 with st.container(width=230, key="var_vegetacion"):
                     st.markdown(
                         '<div style="text-align:center; font-weight:600; '
-                        'margin-bottom:2px;">Vegetación (NDVI)</div>',
+                        'margin-bottom:2px;">Vegetación</div>',
                         unsafe_allow_html=True,
                     )
                     st.plotly_chart(figura_animada_vegetacion(gid), width=230)
                     st.markdown(
                         caja_leyenda_html(
-                            "NDVI", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
+                            "Vegetación", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
                             valores=VALORES_CATEGORIA_5,
                         ),
                         unsafe_allow_html=True,
