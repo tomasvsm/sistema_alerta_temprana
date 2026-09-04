@@ -534,7 +534,7 @@ def mapa_folium_compacto(arr: np.ndarray, bounds, gid: str) -> folium.Map:
     basemap claro que el indice de actividad, para que no queden
     "flotando" sobre fondo blanco sin contexto geografico."""
     centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
-    m = folium.Map(location=centro, tiles=None, zoom_control=False)
+    m = folium.Map(location=centro, tiles=None, zoom_control=False, attributionControl=False)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
               "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
@@ -999,7 +999,7 @@ with tab_panel:
 
             centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
 
-            m = folium.Map(location=centro, tiles=None)
+            m = folium.Map(location=centro, tiles=None, attributionControl=False)
             folium.TileLayer(
                 tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
                       "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
