@@ -193,6 +193,47 @@ class ControlRecentrar(MacroElement):
         self.bounds = bounds
 
 
+class RecalcularAlMostrar(MacroElement):
+    """Mismo hook de invalidateSize() al imprimir que ControlRecentrar,
+    sin el boton de recentrar -- para los mapas chicos/de referencia
+    (variables estaticas). Ademas corrige un problema especifico de estos
+    mapas: como viven dentro de un expander colapsado por defecto
+    ("Variables espaciales"), su iframe arranca oculto/0x0, y
+    fitBounds() calculado en ese momento cae al zoom minimo (mapa del
+    mundo entero) -- ese calculo no se repite solo al abrir el expander
+    despues. Un ResizeObserver sobre el propio contenedor del mapa
+    detecta el momento en que pasa a tener tamaño real y ahi si hace
+    invalidateSize()+fitBounds()."""
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        (function() {
+            var mapa = {{ this._parent.get_name() }};
+            var limites = L.latLngBounds({{ this.bounds }});
+            var yaAjustado = false;
+            function ajustar() {
+                var tam = mapa.getSize();
+                if (tam.x > 0 && tam.y > 0 && !yaAjustado) {
+                    yaAjustado = true;
+                    mapa.invalidateSize();
+                    mapa.fitBounds(limites);
+                }
+            }
+            new ResizeObserver(ajustar).observe(mapa.getContainer());
+            window.matchMedia('print').addEventListener('change', function() {
+                mapa.invalidateSize();
+            });
+            window.addEventListener('beforeprint', function() { mapa.invalidateSize(); });
+        })();
+        {% endmacro %}
+    """)
+
+    def __init__(self, bounds):
+        super().__init__()
+        self._name = "RecalcularAlMostrar"
+        self.bounds = bounds
+
+
 class LeyendaError(MacroElement):
     """Referencia de la capa de error (sigma): un recuadro con la barra de
     color, oculto por defecto y que solo se muestra mientras esa capa este
@@ -393,6 +434,18 @@ def raster_a_imagen_rgba(arr: np.ndarray, gid: str | None, cmap_continuo: bool) 
     return (rgba * 255).astype(np.uint8)
 
 
+def raster_a_imagen_rgba_viridis5(arr: np.ndarray) -> np.ndarray:
+    """RGBA para las variables categoricas de 5 clases del MCDA (mismos
+    valores 0/0.25/0.5/0.75/1 y paleta que figura_categorica_5), con
+    nodata/fuera-de-ejido transparente -- para mostrarlas sobre un mapa
+    base real (Folium) en vez de flotar sobre fondo blanco."""
+    codigo = np.clip(np.round(np.nan_to_num(arr, nan=0.0) * 4), 0, len(PALETA_VIRIDIS5) - 1)
+    cmap = mcolors.ListedColormap(PALETA_VIRIDIS5)
+    rgba = cmap(codigo.astype(int))
+    rgba[np.isnan(arr), 3] = 0.0
+    return (rgba * 255).astype(np.uint8)
+
+
 @st.cache_data
 def cargar_raster_nativo(path: str, gid: str | None = None) -> np.ndarray:
     """Lee el raster en su CRS original (5346), sin reproyectar -- para
@@ -465,12 +518,36 @@ VALORES_CATEGORIA_5 = ["0", "0.25", "0.5", "0.75", "1"]
 
 
 @st.cache_data
-def cargar_variable_estatica(gid: str, variable: str) -> np.ndarray | None:
+def cargar_variable_estatica_4326(gid: str, variable: str):
+    """Reproyectada a EPSG:4326 (array, bounds) para mostrarse sobre un
+    mapa base real (Folium), igual que el indice de actividad."""
     subdir, sufijo, _, _ = VARIABLES_ESTATICAS[variable]
     ruta = ESTATICAS_DIR / f"gid_{gid}_estaticas" / subdir / f"gid_{gid}_estaticas_{sufijo}.tif"
     if not ruta.exists():
-        return None
-    return cargar_raster_nativo(str(ruta), gid=gid)
+        return None, None
+    return cargar_raster_4326(str(ruta), gid=gid)
+
+
+def mapa_folium_compacto(arr: np.ndarray, bounds, gid: str) -> folium.Map:
+    """Mini mapa Leaflet estatico (sin zoom/paneo manual, sin controles)
+    para las variables de referencia de Variables espaciales -- mismo
+    basemap claro que el indice de actividad, para que no queden
+    "flotando" sobre fondo blanco sin contexto geografico."""
+    centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
+    m = folium.Map(location=centro, tiles=None, zoom_control=False)
+    folium.TileLayer(
+        tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
+              "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        attr="Esri",
+    ).add_to(m)
+    folium.raster_layers.ImageOverlay(
+        image=raster_a_imagen_rgba_viridis5(arr), bounds=bounds, opacity=0.85,
+    ).add_to(m)
+    for anillo in contorno_roi_4326(gid):
+        folium.PolyLine(locations=anillo, color="#8a8a8a", weight=1, opacity=0.7).add_to(m)
+    m.fit_bounds(bounds)
+    RecalcularAlMostrar(bounds).add_to(m)
+    return m
 
 
 def caja_leyenda_html(
@@ -497,24 +574,6 @@ def caja_leyenda_html(
         f'text-transform:uppercase; letter-spacing:0.03em; opacity:0.7;">{titulo}</div>'
         f'{filas}</div>'
     )
-
-
-def figura_categorica_5(arr: np.ndarray) -> go.Figure:
-    """Las 4 capas ya vienen con exactamente estos 5 valores (0, 0.25,
-    0.5, 0.75, 1) -- alcanza con escalarlas a indice de color 0-4, no hace
-    falta digitize."""
-    codigo = np.round(arr * 4)
-    fig = px.imshow(
-        codigo, color_continuous_scale=_colorscale_escalonada(PALETA_VIRIDIS5),
-        range_color=[0, 5], aspect="equal",
-    )
-    fig.update_traces(hoverinfo="skip", hovertemplate=None)
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
-    fig.update_layout(
-        height=300, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
-    )
-    return fig
 
 
 @st.cache_data
@@ -1052,7 +1111,7 @@ with tab_panel:
         col_v1, col_v2, col_v3, col_v4 = st.columns(4)
         for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
             with col:
-                arr_var = cargar_variable_estatica(gid, variable)
+                arr_var, bounds_var = cargar_variable_estatica_4326(gid, variable)
                 _, _, titulo_var, etiquetas_var = VARIABLES_ESTATICAS[variable]
                 if arr_var is None:
                     st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
@@ -1063,7 +1122,11 @@ with tab_panel:
                             f'margin-bottom:2px;">{titulo_var}</div>',
                             unsafe_allow_html=True,
                         )
-                        st.plotly_chart(figura_categorica_5(arr_var), width=230)
+                        st_folium(
+                            mapa_folium_compacto(arr_var, bounds_var, gid),
+                            height=230, width=230, returned_objects=[],
+                            key=f"folium_{gid}_{variable}",
+                        )
                         st.markdown(
                             caja_leyenda_html(
                                 titulo_var, PALETA_VIRIDIS5, etiquetas_var,
