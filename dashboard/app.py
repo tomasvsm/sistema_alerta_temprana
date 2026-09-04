@@ -435,10 +435,10 @@ def raster_a_imagen_rgba(arr: np.ndarray, gid: str | None, cmap_continuo: bool) 
 
 
 def raster_a_imagen_rgba_viridis5(arr: np.ndarray) -> np.ndarray:
-    """RGBA para las variables categoricas de 5 clases del MCDA (mismos
-    valores 0/0.25/0.5/0.75/1 y paleta que figura_categorica_5), con
-    nodata/fuera-de-ejido transparente -- para mostrarlas sobre un mapa
-    base real (Folium) en vez de flotar sobre fondo blanco."""
+    """RGBA para las variables categoricas de 5 clases del MCDA (valores
+    0/0.25/0.5/0.75/1, paleta Viridis-5), con nodata/fuera-de-ejido
+    transparente -- para mostrarlas sobre un mapa base real (Folium) en
+    vez de flotar sobre fondo blanco."""
     codigo = np.clip(np.round(np.nan_to_num(arr, nan=0.0) * 4), 0, len(PALETA_VIRIDIS5) - 1)
     cmap = mcolors.ListedColormap(PALETA_VIRIDIS5)
     rgba = cmap(codigo.astype(int))
