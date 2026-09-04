@@ -287,9 +287,11 @@ class ControlCoordenadas(MacroElement):
             var control = new ControlCoords();
             mapa.addControl(control);
             var elemento = control.getContainer();
-            // pegado al borde -- sin el margen de 10px que Leaflet le da
-            // por defecto a cualquier control en esa esquina.
-            elemento.parentElement.style.margin = '0';
+            // pegado al borde -- Leaflet le agrega la clase
+            // "leaflet-control" solo, que trae 10px de margin-right y
+            // margin-bottom via CSS; hay que pisarlo inline en el
+            // propio elemento, no alcanza con el contenedor padre.
+            elemento.style.margin = '0';
             mapa.on('mousemove', function(e) {
                 elemento.innerHTML = e.latlng.lat.toFixed(3) + ' · ' + e.latlng.lng.toFixed(3);
             });
