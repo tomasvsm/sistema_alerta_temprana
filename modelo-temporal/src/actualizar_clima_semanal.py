@@ -134,9 +134,21 @@ def main(fecha_ref=None):
 
         estado["localidades"][loc] = loc_estado
 
-    print(f"\nDescargando pronostico CFS ({gw.FORECAST_RANGE} dias)...")
+    # El pronostico arranca el dia siguiente al ultimo dia REAL (fin_real),
+    # no en "hoy" ni en la fecha real del sistema -- antes usaba
+    # datetime.date.today() adentro de get_weather.py y dejaba un hueco
+    # estructural de 2 dias (la latencia IMERG) entre el dato real y el
+    # pronostico, cada semana, sin excepcion (bug real detectado: el
+    # motor C++ de modelo-temporal no interpola dias faltantes, arma su
+    # eje temporal contando FILAS del CSV en vez de dias de calendario,
+    # asi que un hueco desincroniza las fechas de toda la simulacion de
+    # ahi en mas). No se pudo probar contra una descarga CFS real (necesita
+    # red + credenciales) -- confirmar en el proximo cron real que
+    # downloadForecast(inicio_pronostico) encuentra los ciclos NCEP.
+    inicio_pronostico = fin_real + datetime.timedelta(days=1)
+    print(f"\nDescargando pronostico CFS ({gw.FORECAST_RANGE} dias) desde {inicio_pronostico}...")
     try:
-        gw.downloadForecast()
+        gw.downloadForecast(inicio_pronostico)
         forecast_ok = True
     except Exception as e:
         print(f"  [ERROR] Descarga de pronostico fallo: {e}")
@@ -148,7 +160,7 @@ def main(fecha_ref=None):
             estado["localidades"][loc]["pronostico"] = "error: descarga CFS fallo"
             continue
         try:
-            gw.extractForecastData(lat, lon, f"data/public/{loc}.csv")
+            gw.extractForecastData(lat, lon, f"data/public/{loc}.csv", inicio_pronostico)
             with open(f"data/public/{loc}.forecast.csv") as f:
                 forecast_lines = f.readlines()[1:]
             with open(f"data/public/{loc}.csv", "a") as f:

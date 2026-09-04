@@ -241,9 +241,15 @@ def extractDailyDataFromGDAS(lat,lon,a_date,folder,FIELDS,typeOfLevel,f):
 ## END GDAS ##
 
 ## FORECAST ##
-def downloadForecast():
+def downloadForecast(start_date=None):
     #download
-    start_date=datetime.date.today()
+    # start_date: por defecto la fecha real del sistema (uso manual
+    # suelto); actualizar_clima_semanal.py pasa "hoy" (fecha_ref del
+    # orquestador, no el reloj real) para que una corrida tardia no deje
+    # un hueco entre el ultimo dia de dato real y el primer dia de
+    # pronostico -- ver docstring del modulo que llama a esta funcion.
+    if start_date is None:
+        start_date=datetime.date.today()
     end_date=start_date+datetime.timedelta(days=FORECAST_RANGE)
     f='00'
     forecast_types={
@@ -294,9 +300,13 @@ def extractHistoricData(lat,lon,start_date,end_date,out_filename):
         output+=a_date.strftime('%Y-%m-%d')+', '+', '.join([str(min_T),str(mean_T),str(max_T),str(precipitation),str(mean_rh) ]) + ',,'+'\n'
     open(out_filename,'a').write(output)
 
-def extractForecastData(lat,lon,out_filename):
+def extractForecastData(lat,lon,out_filename,today=None):
     output='Date,Minimum Temp (C),Mean Temperature (C),Maximum Temp (C),Rain (mm),Relative Humidity %,CloudCover,Mean Wind SpeedKm/h' + '\n'
-    today=datetime.date.today()
+    # today: debe ser el MISMO start_date pasado a downloadForecast() --
+    # esta funcion busca archivos ya descargados por nombre de fecha, si
+    # difieren busca fechas que downloadForecast nunca bajo.
+    if today is None:
+        today=datetime.date.today()
     for a_date in daterange(today,today+datetime.timedelta(hours=FORECAST_RANGE*24)):
         FIELDS=['Relative humidity']
         fields_values=extractDailyDataFromGDAS(lat,lon+360.,a_date,FORECAST_PGB_FOLDER,FIELDS,typeOfLevel='heightAboveGround',f='00')
