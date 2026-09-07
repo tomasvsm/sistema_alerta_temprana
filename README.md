@@ -15,9 +15,9 @@ volumen compartido (sin llamadas directas entre contenedores).
 | Servicio | Estado | Qué hace |
 |---|---|---|
 | `modelo-temporal` | ✅ Dockerfile listo | descarga clima, corre el modelo, calcula índice de oviposición |
-| `vegetacion` | ✅ Dockerfile listo | descarga Sentinel-2, calcula NDVI semanal categorizado |
+| `vegetacion` | ✅ Dockerfile listo (GRASS 8.3.2 = host) | descarga Sentinel-2, calcula NDVI semanal categorizado |
 | `geoprocesos` | ✅ Dockerfile listo | MCDA (idoneidad) + índice de actividad final |
-| `capas-estaticas` | ✅ Scripteado (corre en host, no dockerizado) | población/NBI/construcciones (datasets externos grandes, no versionados) |
+| `capas-estaticas` | ✅ Dockerfile listo (GRASS 8.3.2 = host) | población/NBI/construcciones (datasets externos grandes, no versionados) |
 | `orquestador` | ✅ Instalado y corriendo (cron martes) | corrida semanal automática |
 | `dashboard` | ✅ Dockerfile listo | visualización (Streamlit) |
 
@@ -151,6 +151,14 @@ docker run --rm -v $(pwd)/data:/app/data -v $(pwd)/output:/app/output \
 
 ### vegetacion: NDVI semanal por Sentinel-2
 
+GRASS dockerizado (2026-09-07): la imagen usa `ubuntu:24.04` como base, no
+`debian:bookworm-slim`, a propósito -- el repo `universe` de Ubuntu 24.04
+(noble) tiene `grass-core` en la versión **exacta** que corre en el host
+(8.3.2-1ubuntu2); Debian bookworm sólo ofrece GRASS 8.2.1, una versión
+distinta que podría dar resultados ligeramente distintos en resampleos y
+cálculos. Verificado además con una corrida real (semana ya procesada,
+Sentinel-2 real): rasters de salida bit-idénticos a los del host.
+
 Build:
 
 ```bash
@@ -161,17 +169,26 @@ docker build -t vegetacion:test -f vegetacion.Dockerfile .
 Corrida de **una semana**, interactiva (pide localidad, fecha, ROI):
 
 ```bash
-docker run --rm -it -v $(pwd)/data:/app/data -v $(pwd)/resources:/app/resources \
+docker run --rm -it \
+  -v /home/tomas/grassdata:/grassdata \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/resources/roi:/app/resources/roi \
+  -v $HOME/.config/eodag/eodag.yml:/root/.config/eodag/eodag.yml:ro \
   vegetacion:test bash
 # adentro:
 grass /grassdata/posgar2007_4_cba/MCDA --exec python3 src/calculo_vegetacion.py
 ```
 
-**Backfill de un rango de semanas** (en host, no en Docker: necesita GRASS
-instalado localmente): `scripts/run_veg_backfill.sh`. Recorre 4 localidades
-× N semanas (desde una fecha fija hasta hoy), salteando automáticamente lo
-que ya existe en `data/vegetacion/`: así que es seguro relanzarlo después
-de una interrupción, retoma solo lo que falta:
+Montar `/home/tomas/grassdata` (el mapset real) es lo que hace que esto no
+vuelva a importar/reprocesar desde cero cada vez -- sin ese volumen, el
+contenedor arrancaría con la location vacía que trae la imagen (útil sólo
+para un deploy nuevo en otra máquina, donde no existe mapset previo).
+
+**Backfill de un rango de semanas**: `scripts/run_veg_backfill.sh` (ahora
+corre en el contenedor de arriba, no en GRASS del host). Recorre 4
+localidades × N semanas (desde una fecha fija hasta hoy), salteando
+automáticamente lo que ya existe en `data/vegetacion/`: así que es seguro
+relanzarlo después de una interrupción, retoma solo lo que falta:
 
 ```bash
 cd espacializacion
@@ -186,6 +203,18 @@ recién ahí matar los procesos y, si igual quedó algo a mitad de camino,
 borrar esa carpeta específica en `data/vegetacion/`.
 
 ### capas-estaticas: población/NBI/construcciones para MCDA
+
+También dockerizado 2026-09-07 (misma imagen base y misma razón que
+vegetación: GRASS 8.3.2 exacto). Verificado reprocesando una localidad ya
+calculada (gid 1300): los 3 rasters categorizados a 100m dieron
+bit-idénticos a los del host (0 píxeles distintos).
+
+Build:
+
+```bash
+cd espacializacion
+docker build -t capas-estaticas:test -f capas_estaticas.Dockerfile .
+```
 
 No es periódico como vegetación: son datasets estáticos, se procesan una
 vez por localidad y quedan. `scripts/run_variables_estaticas.sh` corre las
@@ -299,6 +328,15 @@ docker build -t dashboard:test -f Dockerfile .
 
 ## Pendiente
 
-- Dockerizar GRASS (pasos de vegetación y MCDA/capas-estaticas, hoy corren
-  en host) con la imagen oficial `osgeo/grass-gis`, para portabilidad y
-  reproducibilidad fuera de esta máquina.
+- **Software ya resuelto** (2026-09-07): vegetación y capas-estáticas
+  corren en Docker con GRASS 8.3.2 (misma versión exacta que el host, vía
+  `ubuntu:24.04` + `grass-core` del repo `universe` -- no la imagen
+  `osgeo/grass-gis` planeada originalmente, que no garantizaba esa versión
+  exacta). Todos los pasos del pipeline semanal corren en contenedor
+  ahora, ninguno depende de tener GRASS/Python instalado en la máquina.
+- **Datasets externos**: esto resuelve la reproducibilidad de *software*,
+  no la de *datos*. FABDEM, Open Buildings, WorldPop y NBI (~20GB, bajo
+  `/home/tomas/gisdata/GIS_MCDA/`) siguen siendo un volumen montado desde
+  el host, con proveniencia sin documentar -- para levantar todo esto en
+  un servidor nuevo hace falta copiar ese directorio y documentar de dónde
+  salió cada dataset.

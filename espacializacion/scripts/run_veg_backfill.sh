@@ -3,7 +3,14 @@ set -uo pipefail
 
 cd /home/tomas/sistema_alerta_temprana/espacializacion
 
-GRASS_MAPSET="/home/tomas/grassdata/posgar2007_4_cba/MCDA"
+# Corre en el contenedor vegetacion:test (GRASS 8.3.2, misma version exacta
+# que el host -- ver comentarios en vegetacion.Dockerfile), no en el GRASS
+# del host: asi el paso no depende de que python3 resuelva a Anaconda (bug
+# real encontrado 2026-09-07: bajo cron, sin Anaconda en el PATH, este
+# paso fallaba por falta de geopandas/eodag) ni de tener GRASS instalado
+# en la maquina que corre esto. El mapset se monta desde el host
+# (/home/tomas/grassdata) para no perder el historial ya acumulado.
+GRASS_MAPSET="/grassdata/posgar2007_4_cba/MCDA"
 LOGDIR="/home/tomas/sistema_alerta_temprana/espacializacion/scripts/veg_backfill_logs"
 mkdir -p "$LOGDIR"
 
@@ -69,7 +76,12 @@ for LOCALIDAD in "${!ROIS[@]}"; do
     # real y cada corrida reprocesaba la ultima semana en rango de nuevo
     # (sin corromper nada, pero desperdiciando descarga/computo).
     printf '%s\n%s\n1\n%s\n' "$LOCALIDAD" "$FECHA_FIN" "$ROI_PATH" \
-      | grass "$GRASS_MAPSET" --exec python3 src/calculo_vegetacion.py > "$LOGFILE" 2>&1
+      | docker run --rm -i \
+          -v /home/tomas/grassdata:/grassdata \
+          -v "$(pwd)/data:/app/data" \
+          -v "$(pwd)/resources/roi:/app/resources/roi" \
+          -v "$HOME/.config/eodag/eodag.yml:/root/.config/eodag/eodag.yml:ro" \
+          vegetacion:test grass "$GRASS_MAPSET" --exec python3 src/calculo_vegetacion.py > "$LOGFILE" 2>&1
     RC=$?
     if [ $RC -eq 0 ] && grep -q "Resultado generado" "$LOGFILE"; then
       echo "    OK"

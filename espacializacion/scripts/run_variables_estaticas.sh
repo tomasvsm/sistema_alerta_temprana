@@ -17,7 +17,13 @@ set -uo pipefail
 
 cd /home/tomas/sistema_alerta_temprana/espacializacion
 
-GRASS_MAPSET="/home/tomas/grassdata/posgar2007_4_cba/MCDA"
+# Corre en el contenedor capas-estaticas:test (GRASS 8.3.2, misma version
+# exacta que el host -- ver comentarios en capas_estaticas.Dockerfile), no
+# en el GRASS del host: verificado 2026-09-07 que reprocesar una localidad
+# ya calculada (gid 1300) da rasters 100m bit-identicos a los del host.
+# El mapset se monta desde el host (/home/tomas/grassdata) para reusar el
+# historial ya importado (poblacion/NBI de localidades ya procesadas).
+GRASS_MAPSET="/grassdata/posgar2007_4_cba/MCDA"
 LOGDIR="/home/tomas/sistema_alerta_temprana/espacializacion/scripts/estaticas_logs"
 mkdir -p "$LOGDIR"
 
@@ -66,7 +72,12 @@ for GID in "${GIDS_A_CORRER[@]}"; do
 
   LOGFILE="$LOGDIR/gid_${GID}.log"
   echo "[$N/$TOTAL] gid=$GID ($NOMBRE) ..."
-  grass "$GRASS_MAPSET" --exec python3 src/variables_MCDA.py "$GID" > "$LOGFILE" 2>&1
+  docker run --rm \
+    -v /home/tomas/grassdata:/grassdata \
+    -v "$(pwd)/estaticas:/app/estaticas" \
+    -v "$(pwd)/resources/roi:/app/resources/roi:ro" \
+    -v /home/tomas/gisdata/GIS_MCDA:/home/tomas/gisdata/GIS_MCDA:ro \
+    capas-estaticas:test grass "$GRASS_MAPSET" --exec python3 src/variables_MCDA.py "$GID" > "$LOGFILE" 2>&1
   RC=$?
   if [ $RC -eq 0 ] && [ -f "$RESULTADO_FINAL" ]; then
     echo "    OK"

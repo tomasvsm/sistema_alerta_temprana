@@ -54,6 +54,18 @@ se corra a mano.
 
 Para verla o editarla: `crontab -l` / `crontab -e`.
 
+**PATH explícito en el crontab** (agregado 2026-09-07): sin esto, cron corre
+con un PATH mínimo (`/usr/bin:/bin`) que no incluye Anaconda, así que
+`python3` resuelve al Python del sistema en vez del de Anaconda -- y el
+paso de vegetación (`geopandas`, `eodag`) y el de MCDA fallarían con
+`ModuleNotFoundError` en toda corrida disparada por cron (nunca se notó
+antes porque cada prueba se hizo corriendo el script a mano desde una
+terminal, donde `.bashrc` ya pone Anaconda primero en el PATH). Confirmado
+con una simulación del entorno real de cron antes de instalar el fix. Este
+riesgo desaparece del todo cuando el paso de vegetación/capas-estáticas
+quede dockerizado (ver "Pendiente" en el README raíz): el Python de un
+contenedor no depende del PATH de quien lo invoca.
+
 ## Notificaciones (ntfy.sh)
 
 Al final de cada corrida REAL (no en el fast-path de "ya estaba ok") se
