@@ -261,8 +261,10 @@ Orden sugerido:
    backfill histórico (`nohup bash scripts/run_veg_backfill.sh &`, ver
    arriba).
 6. **MCDA**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
-   `espacializacion/src/calculo_mcda.py`, y el gid a la lista de
-   `espacializacion/scripts/correr_mcda_todas.sh`.
+   `espacializacion/src/calculo_mcda.py`, el gid a la lista de
+   `espacializacion/scripts/correr_mcda_todas.sh`, y rebuildear
+   `geoprocesos:test` (las variables estáticas del paso 2 se hornean en la
+   imagen al buildear, no se leen en vivo).
 7. **Índice de actividad**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
    `espacializacion/src/calculo_indice_actividad.py`.
 8. **Dashboard**: agregar el gid a los diccionarios `NOMBRES`/slugs en
@@ -277,10 +279,22 @@ ejecución. Este checklist es la referencia para no perder ningún paso.
 
 ### MCDA (idoneidad espacial)
 
+No usa GRASS (rasterio/numpy puro), pero corre en el contenedor
+`geoprocesos:test` igual que índice de actividad (dockerizado 2026-09-07,
+verificado sin diferencias contra la salida del host en 87 semanas de una
+localidad): `scripts/correr_mcda_todas.sh`, o manual:
+
 ```bash
 cd espacializacion
-python3 src/calculo_mcda.py   # pide los GIDs separados por coma
+echo "1252,1271,1300,1385" | docker run --rm -i \
+  -v $(pwd)/data/vegetacion:/app/data/vegetacion:ro \
+  -v $(pwd)/output/MCDA:/app/output/MCDA \
+  geoprocesos:test python3 src/calculo_mcda.py
 ```
+
+`estaticas/` (construcciones/población/NBI) se hornea en la imagen al
+buildear -- si se agrega una localidad nueva (variables estáticas nuevas),
+hay que rebuildear `geoprocesos:test` para que las vea.
 
 ### Índice de actividad (idoneidad × oviposición)
 
