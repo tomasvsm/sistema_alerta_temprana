@@ -41,11 +41,16 @@ Parámetros configurables:
     PATH_NBI                     NBI radios censales GPKG
 
 Uso:
-    grass <ruta/location/mapset> --exec python3 variables_MCDA.py
+    grass <ruta/location/mapset> --exec python3 variables_MCDA.py [gid]
+
+    Sin argumento pide el gid por input() (uso manual/interactivo). Con
+    argumento corre sin pedir nada, para poder invocarse desde un script
+    (ver scripts/run_variables_estaticas.sh).
 """
 
 import os
 import re
+import sys
 import json
 import subprocess
 from datetime import datetime
@@ -635,7 +640,7 @@ def main():
     print(f"  Directorio de salida: {OUTPUT_BASE}")
     print(f"  ROI cache:            {ROI_CACHE_DIR}\n")
 
-    gid = input("GID de la localidad (ej: 1300 para Río Cuarto): ").strip()
+    gid = sys.argv[1] if len(sys.argv) > 1 else input("GID de la localidad (ej: 1300 para Río Cuarto): ").strip()
     if not gid:
         raise ValueError("Debés ingresar un GID válido.")
     gid = sanitize_name(gid)

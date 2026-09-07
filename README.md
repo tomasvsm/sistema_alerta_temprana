@@ -17,7 +17,7 @@ volumen compartido (sin llamadas directas entre contenedores).
 | `modelo-temporal` | ✅ Dockerfile listo | descarga clima, corre el modelo, calcula índice de oviposición |
 | `vegetacion` | ✅ Dockerfile listo | descarga Sentinel-2, calcula NDVI semanal categorizado |
 | `geoprocesos` | ✅ Dockerfile listo | MCDA (idoneidad) + índice de actividad final |
-| `capas-estaticas` | ⏳ pendiente | población/NBI/construcciones (datasets externos grandes, no versionados) |
+| `capas-estaticas` | ✅ Scripteado (corre en host, no dockerizado) | población/NBI/construcciones (datasets externos grandes, no versionados) |
 | `orquestador` | ✅ Instalado y corriendo (cron martes) | corrida semanal automática |
 | `dashboard` | ✅ Dockerfile listo | visualización (Streamlit) |
 
@@ -185,16 +185,66 @@ esperar a ver `OK` en `veg_backfill_master.log` para la semana en curso,
 recién ahí matar los procesos y, si igual quedó algo a mitad de camino,
 borrar esa carpeta específica en `data/vegetacion/`.
 
-### capas-estaticas: NDVI/población/NBI/construcciones para MCDA
+### capas-estaticas: población/NBI/construcciones para MCDA
+
+No es periódico como vegetación: son datasets estáticos, se procesan una
+vez por localidad y quedan. `scripts/run_variables_estaticas.sh` corre las
+4 localidades conocidas salteando las que ya están hechas (así que
+relanzarlo no repite trabajo):
 
 ```bash
 cd espacializacion
-python3 src/variables_MCDA.py   # pide el GID por localidad, interactivo
+bash scripts/run_variables_estaticas.sh          # las 4 conocidas, saltea lo hecho
+bash scripts/run_variables_estaticas.sh 1300     # solo un gid puntual
+```
+
+También se puede correr manualmente (interactivo, pide el gid por input):
+
+```bash
+cd espacializacion
+grass /home/tomas/grassdata/posgar2007_4_cba/MCDA --exec python3 src/variables_MCDA.py
 ```
 
 Depende de datasets externos grandes (FABDEM, WorldPop, NBI, Open
-Buildings) que **no están en el repo**: rutas absolutas configuradas en el
-propio script, se corre a demanda cuando se agrega/actualiza una localidad.
+Buildings) que **no están en el repo**: rutas absolutas configuradas en
+`PATH_*` al principio de `src/variables_MCDA.py`.
+
+#### Agregar una localidad nueva (checklist completo)
+
+`variables_MCDA.py` es un paso más de un total de 7 lugares que hay que
+tocar para que una localidad nueva quede realmente integrada al sistema.
+Orden sugerido:
+
+1. **ROI**: generarlo con `calculo_vegetacion.py` (opción 2 del prompt:
+   "Construir ROI desde shapefile de municipios, filtrar por gid + buffer")
+   → queda cacheado en `resources/roi/roi_gid_<gid>_*.gpkg`. Sin esto,
+   `run_variables_estaticas.sh` la saltea con FALLO.
+2. **Variables estáticas**: `bash scripts/run_variables_estaticas.sh <gid>`
+   (este paso). Confirmar que los datasets externos (FABDEM, Open
+   Buildings, WorldPop, NBI) cubren la nueva localidad.
+3. **Clima**: agregar `[nombre]` con `lat`/`lon` en
+   `modelo-temporal/resources/get_weather.cfg`, y correr un backfill
+   histórico (ver sección "Descargar clima: histórico" más arriba).
+4. **Modelo temporal**: agregar `(gid, nombre)` a la lista de localidades
+   en `modelo-temporal/src/correr_modelo_4loc.py`.
+5. **Vegetación**: agregar `[nombre]="resources/roi/roi_gid_<gid>_*.gpkg"`
+   al `ROIS` de `espacializacion/scripts/run_veg_backfill.sh`, y correr un
+   backfill histórico (`nohup bash scripts/run_veg_backfill.sh &`, ver
+   arriba).
+6. **MCDA**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
+   `espacializacion/src/calculo_mcda.py`, y el gid a la lista de
+   `espacializacion/scripts/correr_mcda_todas.sh`.
+7. **Índice de actividad**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
+   `espacializacion/src/calculo_indice_actividad.py`.
+8. **Dashboard**: agregar el gid a los diccionarios `NOMBRES`/slugs en
+   `dashboard/app.py`, y calcular/agregar su umbral de Youden (`YOUDEN`) y
+   sus bounds de oviposición -- estos dos requieren haber corrido el
+   modelo con datos históricos suficientes para calibrarlos, no son un
+   valor arbitrario. Ver `dashboard/README.md`.
+
+No hay un solo script que haga todo esto de punta a punta: los pasos 3-8
+tocan calibración (Youden, spin-up del modelo) que necesita juicio, no solo
+ejecución. Este checklist es la referencia para no perder ningún paso.
 
 ### MCDA (idoneidad espacial)
 
@@ -249,4 +299,6 @@ docker build -t dashboard:test -f Dockerfile .
 
 ## Pendiente
 
-- `capas-estaticas` containerizado (hoy corre en host).
+- Dockerizar GRASS (pasos de vegetación y MCDA/capas-estaticas, hoy corren
+  en host) con la imagen oficial `osgeo/grass-gis`, para portabilidad y
+  reproducibilidad fuera de esta máquina.
