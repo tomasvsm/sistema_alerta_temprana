@@ -318,11 +318,22 @@ Salida: `output/indice_actividad/{fecha}_{gid}_indice_actividad.tif` y
 
 ## orquestador
 
-Un script del host (no un contenedor) que corre automáticamente los
-miércoles, encadenando clima → modelo temporal → vegetación → MCDA →
-índice de actividad. Ver `orquestador/README.md` para el detalle completo:
-cómo correrlo a mano, cómo se calcula la fecha de referencia semanal, y el
-formato del estado consolidado.
+Un script del host (no un contenedor) que encadena clima → modelo
+temporal → vegetación → MCDA → índice de actividad. Corre solo, en
+segundo plano, por cron: todos los miércoles a las 06:00, con reintentos
+automáticos a las 09:00 y a las 12:00 si la corrida anterior falló (por
+ejemplo si la máquina estaba apagada o sin internet a las 6). Si ya salió
+bien, los reintentos no hacen nada.
+
+Dispara un día después del corte de datos a propósito: cada corrida usa
+como referencia el martes más reciente, y corriendo el miércoles ese
+martes ya es un día calendario completo, así se incluyen sus 7 días
+completos en vez de 6.
+
+También se puede forzar a mano en cualquier momento, sin esperar al cron.
+Ver `orquestador/README.md` para el detalle completo: cómo correrlo a
+mano, cómo se calcula la fecha de referencia semanal, y el formato del
+estado consolidado.
 
 ## dashboard
 
