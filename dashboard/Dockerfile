@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir --break-system-packages \
 WORKDIR /app
 COPY app.py .
 COPY .streamlit/ .streamlit/
+COPY assets/ assets/
 
 # espacializacion/output, modelo-temporal/output y orquestador/logs se leen
 # via volumen en tiempo de ejecucion (no van horneados en la imagen).

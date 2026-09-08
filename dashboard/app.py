@@ -45,6 +45,7 @@ ESTATICAS_DIR = REPO_ROOT / "espacializacion" / "estaticas"
 VEGETACION_DIR = REPO_ROOT / "espacializacion" / "data" / "vegetacion"
 MCDA_DIR = REPO_ROOT / "espacializacion" / "output" / "MCDA"
 EJIDOS_PATH = REPO_ROOT / "espacializacion" / "resources" / "ejidos" / "ejidos_4loc.geojson"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 # Cordoba primero -- es la localidad default al abrir (selectbox sin index
 # explicito toma la primera opcion del dict).
@@ -1365,93 +1366,134 @@ with tab_acerca:
     st.markdown(
         """
 Este sistema estima, semana a semana y por zona, la actividad de
-*Aedes aegypti* (el mosquito vector del dengue) en cuatro localidades de
-Córdoba: Córdoba capital, Río Cuarto, Villa María y Salsipuedes.
+*Aedes aegypti* en cuatro localidades de Córdoba: Córdoba capital, Río
+Cuarto, Villa María y Salsipuedes.
 
-### Cómo se calcula el índice de actividad
+El resultado final, el **índice de actividad**, sale de combinar dos
+cosas: qué tan favorable es cada lugar para que el mosquito viva y se
+reproduzca (**idoneidad de hábitat**), y qué tan alta es la puesta de
+huevos esa semana según el clima reciente (**índice de oviposición**).
+Ninguno de los dos alcanza solo: un lugar puede ser muy favorable para el
+mosquito todo el año, pero si esa semana no llovió ni hizo calor, la
+actividad real es baja; y al revés, una semana muy calurosa no genera
+actividad en un lugar donde el mosquito no tiene dónde reproducirse.
 
-El índice combina dos modelos que se calculan por separado y después se
-multiplican entre sí.
+### Paso 1: ¿qué tan alta es la puesta de huevos esta semana?
 
-**1. Modelo temporal (dinámica poblacional).** Es una implementación del
-modelo de Aguirre
-([Aguirre et al., 2021](https://doi.org/10.1016/j.ecoinf.2021.101351)):
-un sistema de ecuaciones diferenciales con compartimentos de huevo, larva,
-pupa y adulto, forzado día a día por precipitación, temperatura y humedad
-relativa. De la salida diaria del modelo (número de huevos predichos) se arma el
-**índice de oviposición**: cada valor se estandariza entre 0 y 1 contra
-una ventana móvil de los 365 días previos, de modo que el índice mide qué
-tan alta es la oviposición de hoy *en relación al último año en ese mismo
-lugar*, no en términos absolutos.
+Esto sale de un modelo matemático que simula día a día el ciclo de vida
+del mosquito (huevo, larva, pupa, adulto), usando como entrada la
+temperatura, la humedad y la lluvia de cada localidad
+([Aguirre et al., 2021](https://doi.org/10.1016/j.ecoinf.2021.101351)).
+De ahí sale una cantidad de huevos puestos por día, que se convierte en el
+**índice de oviposición**: un número entre 0 y 1 que compara la puesta de
+hoy contra el último año en ese mismo lugar, no contra un valor absoluto.
+Un índice de 1 no significa "muchos huevos" en términos generales, sino
+"tantos como el pico más alto del último año ahí mismo".
 
-**2. Modelo espacial (MCDA, análisis multicriterio).** Combina cuatro
-capas raster semanales, procesadas en GRASS GIS (proyección POSGAR 2007 /
-Argentina 4, EPSG:5346): NDVI de vegetación (Sentinel-2), altura de
-construcciones, población y NBI (necesidades básicas insatisfechas). La
-capa de construcciones combina los footprints de edificios de Open
-Buildings con un modelo digital de elevación (DEM del IGN) y FABDEM (un
-DEM "desnudo", sin edificios ni vegetación): la diferencia entre ambos
-aproxima la altura de cada construcción. El resultado final es un raster
-de **idoneidad de hábitat**: qué tan favorable es cada píxel para que el
-mosquito complete su ciclo, independientemente de si hay huevos siendo
-puestos esa semana o no.
+### Paso 2: ¿qué tan favorable es cada lugar para el mosquito?
 
-**Índice de actividad final**, por píxel y por semana:
+Esto no cambia semana a semana como el clima: depende de características
+más estables del terreno. Se combinan cuatro variables, cada una
+categorizada de 0 (nada favorable) a 1 (muy favorable):
+"""
+    )
+    st.image(
+        str(ASSETS_DIR / "workflow_variables_espaciales.png"),
+        caption="Cómo se calcula cada una de las cuatro variables espaciales y sus categorías.",
+        width=700,
+    )
+    st.markdown(
+        """
+- **Vegetación**: se mide con el NDVI, un índice que se calcula a partir
+  de imágenes satelitales y que indica cuánta vegetación sana hay en cada
+  punto. Ni la vegetación muy densa ni la ausencia total de vegetación
+  favorecen al mosquito tanto como una vegetación moderada.
+- **Construcciones**: la altura de las edificaciones importa porque el
+  mosquito se cría cerca de la vivienda humana, en recipientes con agua;
+  las casas bajas resultan más favorables que los edificios altos.
+- **Población**: a mayor densidad de personas, más fuentes de sangre y
+  más recipientes con agua cerca.
+- **NBI (necesidades básicas insatisfechas)**: en zonas con más carencias
+  habitacionales suele haber más recipientes de almacenamiento de agua al
+  aire libre, lo que favorece la cría del mosquito.
 
-`índice de actividad = idoneidad espacial × índice de oviposición diario`
-(promediado sobre los 7 días de la semana; el desvío intra-semanal queda
-disponible como capa de error, σ, en el mapa).
+La altura de las construcciones no se mide directamente: se calcula
+restando dos modelos de elevación satelital, uno que incluye edificios y
+vegetación y otro que no, y usando los contornos de cada edificio para
+quedarse con su altura individual.
 
-### Clasificación en 4 categorías
+Combinando las cuatro variables se obtiene un mapa de **idoneidad de
+hábitat**: qué tan favorable es cada punto del mapa para el mosquito,
+independientemente de si esa semana hay huevos siendo puestos o no.
 
-Los mapas no muestran el índice crudo (0 a 1) sino 4 categorías (baja,
-media, alta, muy alta), calibradas con datos reales de ovitrampas de cada
-localidad, no con una escala arbitraria: el piso de "media" es el umbral
-de Youden propio de esa localidad (el punto de corte que mejor separa
-positivo/negativo en la curva ROC contra las ovitrampas), y los cortes
-entre media/alta/muy alta son los terciles de los valores reales de
-ovitrampa que superan ese umbral. Por eso el mismo valor de índice puede
-caer en una categoría distinta según la localidad.
+### Paso 3: el índice de actividad final
+
+El índice que se muestra en el mapa principal es, por cada punto y cada
+semana:
+
+`índice de actividad = idoneidad de hábitat × índice de oviposición`
+
+Un lugar con alta idoneidad y alta oviposición esa semana da un índice
+alto; si cualquiera de los dos es bajo, el índice también lo es.
+
+### Cómo se leen los mapas
+
+Los mapas no muestran el índice crudo (un número entre 0 y 1) sino 4
+categorías: baja, media, alta y muy alta. Los cortes entre categorías no
+son arbitrarios ni iguales para las 4 localidades: se calibraron contra
+datos reales de ovitrampas (trampas que confirman presencia real de
+huevos) de cada localidad, buscando el punto de corte que mejor separa
+las semanas con presencia confirmada de las que no. Por eso el mismo
+valor de índice puede caer en una categoría distinta según la localidad.
 
 ### Qué se proyecta a futuro y qué no
 
-El índice de oviposición incorpora pronóstico meteorológico (NOAA CFS, 14
-días) además del dato observado, así que su gráfico muestra un tramo a
-futuro. El índice de actividad espacial, en cambio, depende de imágenes
-satelitales reales (no hay forma de "pronosticar" una imagen Sentinel-2),
-así que es siempre retrospectivo: la semana más reciente que se muestra es
-siempre una semana ya transcurrida.
+El índice de oviposición incorpora un pronóstico meteorológico a 14 días,
+así que su gráfico muestra un tramo a futuro. El índice de actividad
+final, en cambio, siempre depende de imágenes satelitales reales — no hay
+forma de "pronosticar" una imagen satelital — así que la semana más
+reciente que se muestra en el mapa es siempre una semana ya transcurrida.
 
 ### Actualización automática
 
-Todos los martes (`orquestador/`) el sistema re-descarga clima,
-re-corre el modelo temporal, incorpora la semana de vegetación más
-reciente que haya disponible por satélite, y recalcula MCDA e índice de
-actividad. Si algún paso falla esa semana, el resto de la cadena sigue
-corriendo igual con lo que haya disponible, y el dashboard avisa arriba de
-todo si algo quedó desactualizado.
-
+El sistema se actualiza solo una vez por semana: descarga clima nuevo,
+vuelve a correr el modelo de oviposición, incorpora la imagen satelital
+más reciente disponible y recalcula la idoneidad y el índice de actividad
+final. Si algún paso falla esa semana, el resto sigue funcionando igual
+con lo que haya disponible, y el dashboard avisa arriba de todo si algo
+quedó desactualizado.
+"""
+    )
+    st.image(
+        str(ASSETS_DIR / "workflow_sistema.png"),
+        caption="Cómo está armada la actualización semanal automática.",
+        width=700,
+    )
+    st.markdown(
+        """
 ### Fuentes de datos
 
-- **Precipitación**: NASA GES DISC,
-  [GPM IMERG Late](https://gpm.nasa.gov/data/imerg) (diario, 0.1°)
-- **Temperatura / humedad**: [NCEP](https://www.ncep.noaa.gov/) GDAS/FNL
-- **Pronóstico**: NOAA CFS, vía
-  [NOMADS](https://nomads.ncep.noaa.gov/)
-- **Vegetación**: [Copernicus Sentinel-2](https://dataspace.copernicus.eu/)
-  L2A (NDVI), descargado con
-  [EODAG](https://github.com/CS-SI/eodag)
-- **Población**: [WorldPop](https://www.worldpop.org/)
-- **NBI**: [INDEC](https://www.indec.gob.ar/)
+- **Precipitación**: NASA,
+  [GPM IMERG Late](https://www.earthdata.nasa.gov/data/catalog/ges-disc-gpm-3imergdl-07)
+  (diario, 0.1°)
+- **Temperatura y humedad**: NCEP,
+  [GDAS/FNL](https://rda.ucar.edu/datasets/ds083.3/)
+- **Pronóstico climático**: NOAA,
+  [Climate Forecast System](https://www.ncei.noaa.gov/products/weather-climate-models/climate-forecast-system)
+- **Vegetación**:
+  [Copernicus Sentinel-2](https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2)
+  L2A (NDVI)
+- **Población**:
+  [WorldPop](https://data.humdata.org/dataset/worldpop-population-counts-for-argentina)
+- **NBI**:
+  [INDEC](https://www.indec.gob.ar/indec/web/Nivel4-Tema-4-47-156)
 - **Construcciones**: footprints de
   [Open Buildings](https://sites.research.google/gr/open-buildings/) (Google),
-  altura por diferencia entre el DEM del
-  [IGN](https://www.ign.gob.ar/) y
-  [FABDEM](https://www.fathom.global/product/fabdem/) (Fathom / Universidad
+  altura por diferencia entre el
+  [modelo digital de elevación del IGN](https://www.ign.gob.ar/NuestrasActividades/Geodesia/ModeloDigitalElevaciones/Introduccion)
+  y [FABDEM](https://www.fathom.global/product/fabdem/) (Fathom / Universidad
   de Bristol)
-- **Mapas base**: [Esri](https://www.arcgis.com/) World Light Gray Canvas
-  (HERE, Garmin, FAO, NOAA, USGS) y Esri World Imagery (Maxar, Earthstar
-  Geographics)
+- **Mapas base**: Esri World Light Gray Canvas y Esri World Imagery
         """
     )
     st.divider()
