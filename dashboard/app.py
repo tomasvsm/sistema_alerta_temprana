@@ -1393,10 +1393,14 @@ de cada semana, cada uno con su propia ventana de 365 días, dan además un
 desvío estándar intrasemanal que se reporta como incertidumbre del
 índice.
 
-El índice incorpora pronóstico meteorológico (CFS, NOAA) a 14 días además
-del dato observado, por lo que su gráfico muestra un tramo a futuro. La
-idoneidad de hábitat y el índice de actividad, en cambio, dependen de
-imágenes satelitales reales y son siempre retrospectivos.
+Además del dato meteorológico observado, el modelo se corre con pronóstico
+(CFS, NOAA) a 14 días como entrada, lo que proyecta el índice de
+oviposición 14 días hacia adelante: el tramo a futuro del gráfico no es
+una extrapolación estadística de la serie, sino la salida del mismo
+modelo forzada con temperatura, humedad y precipitación pronosticadas en
+vez de observadas. La idoneidad de hábitat y el índice de actividad, en
+cambio, dependen de imágenes satelitales reales y son siempre
+retrospectivos.
 
 ### Idoneidad de hábitat
 
@@ -1421,8 +1425,8 @@ fluidos vegetales). Construcciones y NBI se asociaron a la disponibilidad
 de sitios de cría: menor altura de edificación y mayor proporción de NBI
 se asumen asociadas a más recipientes artificiales aptos como criadero.
 La densidad poblacional se asoció a la disponibilidad de sangre. La
-vegetación se consideró aporte a ambos criterios —sitio de descanso y
-fuente de fluidos vegetales—, lo que explica su peso dominante:
+vegetación se consideró aporte a ambos criterios (sitio de descanso y
+fuente de fluidos vegetales), lo que explica su peso dominante:
 
 | Variable | Peso |
 |---|---|
@@ -1455,9 +1459,16 @@ anulen la variabilidad espacial que aporta la idoneidad de hábitat.
 Los mapas no muestran el índice crudo sino 4 categorías: baja, media,
 alta y muy alta. Los cortes entre categorías se calibraron contra datos
 reales de ovitrampas de cada localidad, buscando el punto de corte que
-mejor separa las semanas con presencia confirmada de las que no —no son
-iguales entre localidades, así que el mismo valor de índice puede caer en
-una categoría distinta según el lugar.
+mejor separa las semanas con presencia confirmada de las que no. Los
+cortes no son iguales entre localidades, así que el mismo valor de índice
+puede caer en una categoría distinta según el lugar.
+
+El indicador "nivel de actividad de esta semana" no muestra un promedio
+del mapa: muestra la categoría más alta alcanzada por al menos un píxel
+de la localidad esa semana. Es una decisión deliberada de alerta
+temprana, más sensible que el promedio o la moda, que casi siempre darían
+"baja" porque la mayor parte del área está en esa categoría la mayor
+parte del tiempo.
 
 ### Actualización automática
 

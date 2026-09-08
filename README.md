@@ -259,8 +259,8 @@ orden:
 6. **MCDA**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
    `espacializacion/src/calculo_mcda.py`, el gid a la lista de
    `espacializacion/scripts/correr_mcda_todas.sh`, y rebuildear
-   `geoprocesos:test` — las variables estáticas del paso 2 quedan
-   horneadas en esa imagen al buildear, no se leen en vivo.
+   `geoprocesos:test`, ya que las variables estáticas del paso 2 quedan
+   horneadas en esa imagen al buildear y no se leen en vivo.
 7. **Índice de actividad**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
    `espacializacion/src/calculo_indice_actividad.py`.
 8. **Dashboard**: agregar el gid a los diccionarios de nombres en
