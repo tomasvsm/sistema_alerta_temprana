@@ -1,8 +1,10 @@
 #!/bin/bash
 # Corrida operativa semanal del sistema de alerta temprana.
-# Pensado para cron, todos los martes (ver orquestador/README.md para la
-# linea de crontab). No pide nada por input -- todas las fechas se calculan
-# solas a partir de "hoy".
+# Pensado para cron, todos los miercoles (ver orquestador/README.md para la
+# linea de crontab) -- el corte de datos sigue siendo el martes anterior
+# (ya un dia completo a esa altura), dispara un dia despues para no perder
+# ese ultimo dia por latencia de publicacion de Sentinel-2/IMERG. No pide
+# nada por input -- todas las fechas se calculan solas a partir de "hoy".
 #
 # Filosofia: NUNCA aborta la cadena entera por un paso que falla -- cada
 # paso corre pase lo que pase con los anteriores, y el resultado (ok/error)
