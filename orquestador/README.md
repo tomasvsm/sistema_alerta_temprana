@@ -15,9 +15,10 @@ anclado al martes anterior (ver más abajo por qué):
    de cada localidad, re-descarga clima real confirmado (GDEX + IMERG) y
    agrega pronóstico CFS fresco de 14 días. Si la descarga falla a mitad
    de camino, restaura un resguardo en vez de dejar un hueco.
-2. **Modelo temporal**: corre el modelo Aguirre/Otero y el índice de
-   oviposición para las 4 localidades, hasta hoy más 14 días proyectados
-   gracias al pronóstico del paso anterior.
+2. **Modelo temporal**: corre el modelo de
+   [Aguirre et al., 2021](https://doi.org/10.1016/j.ecoinf.2021.101351) y
+   el índice de oviposición para las 4 localidades, hasta hoy más 14 días
+   proyectados gracias al pronóstico del paso anterior.
 3. **Vegetación**: agrega la semana de Sentinel-2 más reciente confirmada
    por satélite en las 4 localidades, reintentando hasta 52 semanas atrás
    por nubosidad, igual que el backfill. Es puramente retrospectivo: la

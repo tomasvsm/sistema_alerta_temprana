@@ -4,8 +4,9 @@ Sistema de alerta temprana para *Aedes aegypti* en 4 localidades de
 Córdoba: Córdoba capital (gid 1385), Río Cuarto (1300), Villa María (1252) y
 Salsipuedes (1271).
 
-Combina un **modelo temporal** (dinámica poblacional Aguirre/Otero a partir
-de clima) con un **modelo espacial** (MCDA de idoneidad de hábitat a partir
+Combina un **modelo temporal** (dinámica poblacional de
+[Aguirre et al., 2021](https://doi.org/10.1016/j.ecoinf.2021.101351) a
+partir de clima) con un **modelo espacial** (MCDA de idoneidad de hábitat a partir
 de NDVI, población, NBI y construcciones) en un **índice de actividad**
 semanal por píxel: `IdA = idoneidad_espacial × índice_de_oviposición`.
 

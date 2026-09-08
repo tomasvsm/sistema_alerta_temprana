@@ -1,5 +1,5 @@
 """
-Corre el modelo temporal (Aguirre/Otero) + índice de oviposición para las
+Corre el modelo temporal (Aguirre et al., 2021) + índice de oviposición para las
 4 localidades. Paso 2 del orquestador semanal -- corre después de
 actualizar_clima_semanal.py, así que por defecto llega hasta hoy +
 FORECAST_RANGE días (el pronóstico recién agregado al CSV de clima).
