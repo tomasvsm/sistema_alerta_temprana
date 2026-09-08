@@ -1102,93 +1102,128 @@ with tab_panel:
         )
     semana = st.session_state[ESTADO_SEMANA_KEY]
 
-    # Todo el contenido pesado del panel (mapa, graficos, expanders) se
-    # calcula primero y recien se dibuja al final, para que no vaya
-    # apareciendo de a partes mientras carga -- antes cada seccion se
-    # renderizaba en cuanto terminaba su propio calculo, y el usuario veia
-    # el panel "goteando" contenido durante varios segundos.
-    with st.spinner("Cargando panel..."):
-        ia_path = IA_DIR / f"{semana}_{gid}_indice_actividad.tif"
-        sigma_path = IA_DIR / f"{semana}_{gid}_sigma.tif"
-        arr_ia, bounds = cargar_raster_4326(str(ia_path), gid=gid)
-        # El semaforo usa el raster nativo (mismo que serie_temporal_indice_
-        # actividad para el "maximo espacial") en vez del reproyectado a
-        # 4326 -- cada uno aplica su propia mascara de ejido por separado
-        # (distinto shape/transform), y podian discrepar levemente en
-        # pixeles del borde del ejido si se mezclaban las dos fuentes.
-        arr_ia_nativo = cargar_raster_nativo(str(ia_path), gid=gid)
-        codigo_activo = codigo_categoria_maxima(gid, arr_ia_nativo)
+    ia_path = IA_DIR / f"{semana}_{gid}_indice_actividad.tif"
+    sigma_path = IA_DIR / f"{semana}_{gid}_sigma.tif"
+    arr_ia, bounds = cargar_raster_4326(str(ia_path), gid=gid)
+    # El semaforo usa el raster nativo (mismo que serie_temporal_indice_
+    # actividad para el "maximo espacial") en vez del reproyectado a
+    # 4326 -- cada uno aplica su propia mascara de ejido por separado
+    # (distinto shape/transform), y podian discrepar levemente en
+    # pixeles del borde del ejido si se mezclaban las dos fuentes.
+    arr_ia_nativo = cargar_raster_nativo(str(ia_path), gid=gid)
+    codigo_activo = codigo_categoria_maxima(gid, arr_ia_nativo)
 
-        referencias = " · ".join(
-            f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
-            for c, cat in zip(PALETA, CATEGORIAS)
-        )
-        semanas_cronologico = list(reversed(semanas))
+    with col_semaforo:
+        st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
 
-        centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
-        m = folium.Map(location=centro, tiles=None, attributionControl=False)
-        folium.TileLayer(
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
-                  "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri",
-            name="Claro", show=True,
-        ).add_to(m)
-        folium.TileLayer(
-            tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
-                  "World_Imagery/MapServer/tile/{z}/{y}/{x}",
-            attr="Esri",
-            name="Satelital", show=False,
-        ).add_to(m)
-        folium.raster_layers.ImageOverlay(
-            image=raster_a_imagen_rgba(arr_ia, gid, cmap_continuo=False),
-            bounds=bounds,
-            name="Índice de actividad",
-            opacity=0.75,
-        ).add_to(m)
+    col_mapa, col_ovip = st.columns([3, 2])
 
-        for anillo in contorno_roi_4326(gid):
-            folium.PolyLine(
-                locations=anillo, color="#8a8a8a", weight=1.2, opacity=0.8,
+    with col_mapa:
+        # Titulo, barra de tiempo y mapa comparten el mismo ancho fijo del
+        # mapa (610px) y quedan centrados dentro de la columna -- si no,
+        # el titulo y la barra (que si son responsive) quedaban mas anchos
+        # que el mapa (fijo) y todo se veia desalineado. st.container con
+        # width= es un elemento real (a diferencia de un <div> suelto en
+        # st.markdown, que Streamlit renderiza aislado y no envuelve a los
+        # hermanos siguientes).
+        with st.container(width=610, key="mapa_centrado"):
+            referencias = " · ".join(
+                f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
+                for c, cat in zip(PALETA, CATEGORIAS)
+            )
+            st.markdown(
+                f"**Índice de actividad** ({referencias})", unsafe_allow_html=True
+            )
+
+            semanas_cronologico = list(reversed(semanas))
+            st.select_slider(
+                "Recorrer semanas", options=semanas_cronologico,
+                value=semana, key=f"{ESTADO_SEMANA_KEY}_slider",
+                on_change=_semana_desde_slider, label_visibility="collapsed",
+                format_func=fmt_fecha,
+            )
+
+            centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
+
+            m = folium.Map(location=centro, tiles=None, attributionControl=False)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
+                      "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+                attr="Esri",
+                name="Claro", show=True,
+            ).add_to(m)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
+                      "World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                attr="Esri",
+                name="Satelital", show=False,
+            ).add_to(m)
+            folium.raster_layers.ImageOverlay(
+                image=raster_a_imagen_rgba(arr_ia, gid, cmap_continuo=False),
+                bounds=bounds,
+                name="Índice de actividad",
+                opacity=0.75,
             ).add_to(m)
 
-        if sigma_path.exists():
-            arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path), gid=gid)
-            nombre_capa_sigma = "Error (σ, desvío intra-semanal)"
-            capa_sigma = folium.raster_layers.ImageOverlay(
-                image=raster_a_imagen_rgba(arr_sigma, None, cmap_continuo=True),
-                bounds=bounds_sigma,
-                name=nombre_capa_sigma,
-                opacity=0.75,
-                show=False,
-            )
-            capa_sigma.add_to(m)
-            LeyendaError(VMAX_SIGMA, nombre_capa_sigma).add_to(m)
+            for anillo in contorno_roi_4326(gid):
+                folium.PolyLine(
+                    locations=anillo, color="#8a8a8a", weight=1.2, opacity=0.8,
+                ).add_to(m)
 
-        folium.LayerControl(collapsed=True).add_to(m)
-        m.fit_bounds(bounds)
+            if sigma_path.exists():
+                arr_sigma, bounds_sigma = cargar_raster_4326(str(sigma_path), gid=gid)
+                nombre_capa_sigma = "Error (σ, desvío intra-semanal)"
+                capa_sigma = folium.raster_layers.ImageOverlay(
+                    image=raster_a_imagen_rgba(arr_sigma, None, cmap_continuo=True),
+                    bounds=bounds_sigma,
+                    name=nombre_capa_sigma,
+                    opacity=0.75,
+                    show=False,
+                )
+                capa_sigma.add_to(m)
+                LeyendaError(VMAX_SIGMA, nombre_capa_sigma).add_to(m)
 
-        ControlRecentrar(bounds).add_to(m)
-        ControlNorte().add_to(m)
-        ControlEscala().add_to(m)
-        ControlCoordenadas().add_to(m)
+            folium.LayerControl(collapsed=True).add_to(m)
+            m.fit_bounds(bounds)
 
+            ControlRecentrar(bounds).add_to(m)
+            ControlNorte().add_to(m)
+            ControlEscala().add_to(m)
+            ControlCoordenadas().add_to(m)
+
+            st_folium(m, height=460, width=610, returned_objects=[])
+
+        st.caption(
+            f"Umbral de Youden de esta localidad: {YOUDEN[gid]:.4f} "
+            "(calibrado contra datos de ovitrampas)."
+        )
+
+    with col_ovip:
         df_ovip = cargar_indice_oviposicion(gid)
-        fig_ovip_reciente = fig_ovip_completo = None
-        desde = None
-        if df_ovip is not None:
-            fig_ovip_reciente = fig_indice_oviposicion(
-                df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
-                dias_atras=90, height=270,
+        if df_ovip is None:
+            st.info("Sin datos de índice de oviposición para esta localidad.")
+        else:
+            st.plotly_chart(
+                fig_indice_oviposicion(
+                    df_ovip, "Índice de oviposición: últimos 3 meses + pronóstico",
+                    dias_atras=90, height=270,
+                ),
+                width=410,
             )
             desde = df_ovip["date"].min().strftime("%Y-%m-%d")
-            fig_ovip_completo = fig_indice_oviposicion(
-                df_ovip, f"Índice de oviposición: desde {fmt_fecha(desde)}",
-                dias_atras=None, height=270,
+            st.plotly_chart(
+                fig_indice_oviposicion(
+                    df_ovip, f"Índice de oviposición: desde {fmt_fecha(desde)}",
+                    dias_atras=None, height=270,
+                ),
+                width=410,
             )
 
+    with st.expander("Evolución del índice de actividad (serie temporal)"):
         df_serie = serie_temporal_indice_actividad(gid)
-        fig_serie = None
-        if not df_serie.empty:
+        if df_serie.empty:
+            st.info("Sin semanas suficientes para mostrar evolución.")
+        else:
             fig_serie = go.Figure()
             fig_serie.add_trace(go.Scatter(
                 x=df_serie["date"], y=df_serie["media"],
@@ -1211,23 +1246,75 @@ with tab_panel:
                 # alcancen a mostrar mes/año (no distinguen semana).
                 hovermode="x unified",
             )
+            st.plotly_chart(fig_serie, width=950)
 
-        idoneidad_disponible = semanas_idoneidad_disponibles(gid)
-        fig_idoneidad = figura_animada_idoneidad(gid) if idoneidad_disponible else None
-        etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
+    with st.expander("Índice de idoneidad de hábitat y variables espaciales utilizadas"):
+        st.markdown("**Índice de idoneidad de hábitat**")
+        if not semanas_idoneidad_disponibles(gid):
+            st.info("Sin datos de idoneidad para esta localidad.")
+        else:
+            with st.container(horizontal=True, vertical_alignment="center"):
+                st.plotly_chart(figura_animada_idoneidad(gid), width=500)
+                etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
+                st.markdown(
+                    caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
+                    unsafe_allow_html=True,
+                )
 
-        datos_variables_estaticas = {}
-        for variable in ("construcciones", "poblacion", "nbi"):
-            arr_var, bounds_var = cargar_variable_estatica_4326(gid, variable)
-            mapa_var = mapa_folium_compacto(arr_var, bounds_var, gid) if arr_var is not None else None
-            datos_variables_estaticas[variable] = (arr_var, mapa_var)
+        st.divider()
 
-        vegetacion_ok = vegetacion_disponible(gid)
-        fig_vegetacion = figura_animada_vegetacion(gid) if vegetacion_ok else None
+        st.markdown("**Variables espaciales**")
+        col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+        for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
+            with col:
+                arr_var, bounds_var = cargar_variable_estatica_4326(gid, variable)
+                _, _, titulo_var, etiquetas_var = VARIABLES_ESTATICAS[variable]
+                if arr_var is None:
+                    st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
+                else:
+                    with st.container(width=230, key=f"var_{variable}"):
+                        st.markdown(
+                            f'<div style="text-align:center; font-weight:600; '
+                            f'margin-bottom:2px;">{titulo_var}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        st_folium(
+                            mapa_folium_compacto(arr_var, bounds_var, gid),
+                            height=230, width=230, returned_objects=[],
+                            key=f"folium_{gid}_{variable}",
+                        )
+                        st.markdown(
+                            caja_leyenda_html(
+                                titulo_var, PALETA_VIRIDIS5, etiquetas_var,
+                                valores=VALORES_CATEGORIA_5,
+                            ),
+                            unsafe_allow_html=True,
+                        )
+        with col_v4:
+            if not vegetacion_disponible(gid):
+                st.markdown("**Vegetación**")
+                st.info("Sin datos de vegetación para esta localidad.")
+            else:
+                with st.container(width=230, key="var_vegetacion"):
+                    st.markdown(
+                        '<div style="text-align:center; font-weight:600; '
+                        'margin-bottom:2px;">Vegetación</div>',
+                        unsafe_allow_html=True,
+                    )
+                    st.plotly_chart(figura_animada_vegetacion(gid), width=230)
+                    st.markdown(
+                        caja_leyenda_html(
+                            "Vegetación", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
+                            valores=VALORES_CATEGORIA_5,
+                        ),
+                        unsafe_allow_html=True,
+                    )
 
+    with st.expander("Datos meteorológicos"):
         df_met = cargar_serie_meteorologica(gid)
-        fig_met = None
-        if df_met is not None:
+        if df_met is None:
+            st.info("Sin datos meteorológicos para esta localidad.")
+        else:
             hoy = fecha_referencia()
             ventana = df_met
             # el CSV del modelo trae tanto clima observado como
@@ -1271,116 +1358,6 @@ with tab_panel:
                     range=[hoy - pd.Timedelta(days=365), fin_pronost + pd.Timedelta(days=1)],
                 ),
             )
-
-    # A partir de aca, todo ya esta calculado: solo queda dibujar.
-    with col_semaforo:
-        st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
-
-    col_mapa, col_ovip = st.columns([3, 2])
-
-    with col_mapa:
-        # Titulo, barra de tiempo y mapa comparten el mismo ancho fijo del
-        # mapa (610px) y quedan centrados dentro de la columna -- si no,
-        # el titulo y la barra (que si son responsive) quedaban mas anchos
-        # que el mapa (fijo) y todo se veia desalineado. st.container con
-        # width= es un elemento real (a diferencia de un <div> suelto en
-        # st.markdown, que Streamlit renderiza aislado y no envuelve a los
-        # hermanos siguientes).
-        with st.container(width=610, key="mapa_centrado"):
-            st.markdown(
-                f"**Índice de actividad** ({referencias})", unsafe_allow_html=True
-            )
-            st.select_slider(
-                "Recorrer semanas", options=semanas_cronologico,
-                value=semana, key=f"{ESTADO_SEMANA_KEY}_slider",
-                on_change=_semana_desde_slider, label_visibility="collapsed",
-                format_func=fmt_fecha,
-            )
-            st_folium(m, height=460, width=610, returned_objects=[])
-
-        st.caption(
-            f"Umbral de Youden de esta localidad: {YOUDEN[gid]:.4f} "
-            "(calibrado contra datos de ovitrampas)."
-        )
-
-    with col_ovip:
-        if df_ovip is None:
-            st.info("Sin datos de índice de oviposición para esta localidad.")
-        else:
-            st.plotly_chart(fig_ovip_reciente, width=410)
-            st.plotly_chart(fig_ovip_completo, width=410)
-
-    with st.expander("Evolución del índice de actividad (serie temporal)"):
-        if fig_serie is None:
-            st.info("Sin semanas suficientes para mostrar evolución.")
-        else:
-            st.plotly_chart(fig_serie, width=950)
-
-    with st.expander("Índice de idoneidad de hábitat y variables espaciales utilizadas"):
-        st.markdown("**Índice de idoneidad de hábitat**")
-        if not idoneidad_disponible:
-            st.info("Sin datos de idoneidad para esta localidad.")
-        else:
-            with st.container(horizontal=True, vertical_alignment="center"):
-                st.plotly_chart(fig_idoneidad, width=500)
-                st.markdown(
-                    caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
-                    unsafe_allow_html=True,
-                )
-
-        st.divider()
-
-        st.markdown("**Variables espaciales**")
-        col_v1, col_v2, col_v3, col_v4 = st.columns(4)
-        for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
-            with col:
-                arr_var, mapa_var = datos_variables_estaticas[variable]
-                _, _, titulo_var, etiquetas_var = VARIABLES_ESTATICAS[variable]
-                if arr_var is None:
-                    st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
-                else:
-                    with st.container(width=230, key=f"var_{variable}"):
-                        st.markdown(
-                            f'<div style="text-align:center; font-weight:600; '
-                            f'margin-bottom:2px;">{titulo_var}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        st_folium(
-                            mapa_var,
-                            height=230, width=230, returned_objects=[],
-                            key=f"folium_{gid}_{variable}",
-                        )
-                        st.markdown(
-                            caja_leyenda_html(
-                                titulo_var, PALETA_VIRIDIS5, etiquetas_var,
-                                valores=VALORES_CATEGORIA_5,
-                            ),
-                            unsafe_allow_html=True,
-                        )
-        with col_v4:
-            if not vegetacion_ok:
-                st.markdown("**Vegetación**")
-                st.info("Sin datos de vegetación para esta localidad.")
-            else:
-                with st.container(width=230, key="var_vegetacion"):
-                    st.markdown(
-                        '<div style="text-align:center; font-weight:600; '
-                        'margin-bottom:2px;">Vegetación</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.plotly_chart(fig_vegetacion, width=230)
-                    st.markdown(
-                        caja_leyenda_html(
-                            "Vegetación", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
-                            valores=VALORES_CATEGORIA_5,
-                        ),
-                        unsafe_allow_html=True,
-                    )
-
-    with st.expander("Datos meteorológicos"):
-        if fig_met is None:
-            st.info("Sin datos meteorológicos para esta localidad.")
-        else:
             st.plotly_chart(fig_met, width=960)
 
     st.divider()
