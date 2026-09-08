@@ -1,6 +1,6 @@
 # sistema_alerta_temprana
 
-Sistema de alerta temprana para *Aedes aegypti* (dengue) en 4 localidades de
+Sistema de alerta temprana para *Aedes aegypti* en 4 localidades de
 Córdoba: Córdoba capital (gid 1385), Río Cuarto (1300), Villa María (1252) y
 Salsipuedes (1271).
 
@@ -9,21 +9,22 @@ de clima) con un **modelo espacial** (MCDA de idoneidad de hábitat a partir
 de NDVI, población, NBI y construcciones) en un **índice de actividad**
 semanal por píxel: `IdA = idoneidad_espacial × índice_de_oviposición`.
 
-Arquitectura: contenedores independientes que solo se comunican por un
-volumen compartido (sin llamadas directas entre contenedores).
+La arquitectura son contenedores Docker independientes que solo se
+comunican a través de un volumen de datos compartido, sin llamadas
+directas entre ellos:
 
-| Servicio | Estado | Qué hace |
-|---|---|---|
-| `modelo-temporal` | ✅ Dockerfile listo | descarga clima, corre el modelo, calcula índice de oviposición |
-| `vegetacion` | ✅ Dockerfile listo (GRASS 8.3.2 = host) | descarga Sentinel-2, calcula NDVI semanal categorizado |
-| `geoprocesos` | ✅ Dockerfile listo | MCDA (idoneidad) + índice de actividad final |
-| `capas-estaticas` | ✅ Dockerfile listo (GRASS 8.3.2 = host) | población/NBI/construcciones (datasets externos grandes, no versionados) |
-| `orquestador` | ✅ Instalado y corriendo (cron martes) | corrida semanal automática |
-| `dashboard` | ✅ Dockerfile listo | visualización (Streamlit) |
+| Servicio | Qué hace |
+|---|---|
+| `modelo-temporal` | descarga clima, corre el modelo, calcula índice de oviposición |
+| `vegetacion` | descarga Sentinel-2, calcula NDVI semanal categorizado |
+| `capas-estaticas` | procesa población, construcciones y NBI para el MCDA |
+| `geoprocesos` | MCDA (idoneidad espacial) e índice de actividad final |
+| `orquestador` | script del host que coordina la corrida semanal (no es un contenedor) |
+| `dashboard` | visualización (Streamlit), servicio persistente aparte |
 
-Credenciales (IMERG, GDAS/GDEX, Copernicus/EODAG) van en
-`*/resources/passwords.cfg`, gitignoreado: pedir las claves aparte, no están
-en el repo.
+Las credenciales (IMERG, GDAS/GDEX, Copernicus/EODAG) van en
+`*/resources/passwords.cfg`, que está gitignoreado: hay que pedir las
+claves aparte, no están en el repo.
 
 ---
 
@@ -38,9 +39,9 @@ docker build -t modelo-temporal:test -f Dockerfile .
 
 ### 1. Descargar clima: histórico / backfill grande
 
-Para poblar desde cero o extender bien hacia atrás (ej. agregar una
-localidad nueva, o ampliar el spin-up del modelo). Usa GDEX (GDAS/FNL) +
-GES DISC (IMERG), en paralelo:
+Para poblar desde cero o extender bien hacia atrás (por ejemplo al agregar
+una localidad nueva, o ampliar el spin-up del modelo). Usa GDEX (GDAS/FNL)
+y GES DISC (IMERG) en paralelo:
 
 ```bash
 cd modelo-temporal
@@ -51,7 +52,7 @@ import gdas_lib, datetime
 rid = gdas_lib.submit(datetime.date(2023,1,1), datetime.date(2024,6,30))
 print(rid)
 "
-# ... esperar status == 'Completed' (gdas_lib.get_status(rid)), después:
+# esperar a que gdas_lib.get_status(rid) devuelva 'Completed', después:
 python3 -c "
 import sys; sys.path.insert(0,'src')
 import gdas_lib
@@ -66,7 +67,8 @@ gw.downloadDataFromIMERG(datetime.date(2023,1,1), datetime.date(2024,6,30), gw.I
 "
 ```
 
-Después, extraer el CSV por localidad (lat/lon en `resources/get_weather.cfg`):
+Después, extraer el CSV por localidad (lat/lon están en
+`resources/get_weather.cfg`):
 
 ```bash
 python3 -c "
@@ -80,21 +82,21 @@ for loc in ['villa_maria','salsipuedes','cordoba','rio_cuarto']:
 "
 ```
 
-⚠️ `daterange()` es exclusivo del último día: si el rango debe incluir el
-día final, extender el `end_date` en 1 día.
+`daterange()` excluye el último día del rango: si tiene que incluirlo, hay
+que extender `end_date` en 1 día.
 
-### 2. Descargar clima: operativo (ventana chica, ej. última semana)
+### 2. Descargar clima: operativo (ventana chica, por ejemplo la última semana)
 
 Para actualizaciones cortas alcanza con el flujo simple (NOMADS + IMERG +
-forecast en un solo llamado):
+pronóstico en un solo llamado):
 
 ```bash
 cd modelo-temporal
 python3 src/get_weather.py 2026-08-18 2026-08-25
 ```
 
-⚠️ Correr `get_weather.py` **sin argumentos** está roto (fecha hardcodeada
-2015-2024 dentro del `elif len(sys.argv)==1`): siempre pasar las 2 fechas.
+`get_weather.py` siempre necesita las 2 fechas como argumento; correrlo
+sin argumentos no funciona.
 
 ### 3. Correr el modelo (las 4 localidades)
 
@@ -125,16 +127,17 @@ for gid, nombre in localidades:
 EOF
 ```
 
-`start_date` en 2023-01-01 (no el arranque real del período de interés) es
-adrede: le da al modelo ~1.5 años de spin-up antes de que la ventana de
-normalización del índice de oviposición (365 días móviles) empiece a
-importar: si se corre desde muy cerca de la fecha que interesa, el mínimo
-de esa ventana puede quedar contaminado por el transitorio de arranque
-(población inicial arbitraria, sin adultos).
+`start_date` se fija en 2023-01-01 aunque el período que interesa empiece
+después: el modelo necesita alrededor de 1.5 años de rodaje antes de que
+la ventana de normalización del índice de oviposición (365 días móviles)
+sea confiable. Arrancar muy cerca de la fecha de interés contamina el
+mínimo de esa ventana con el transitorio inicial, ya que el modelo parte
+de una población arbitraria sin adultos.
 
 Salida por localidad: `output/{rango}_{gid}_{nombre}_modelo.csv` (crudo:
-huevos/larvas/pupas/adultos/tasa_oviposicion/clima) y
-`output/{rango}_{gid}_{nombre}_indice_oviposicion.csv` (estandarizado 0-1).
+huevos, larvas, pupas, adultos, tasa de oviposición y clima) y
+`output/{rango}_{gid}_{nombre}_indice_oviposicion.csv` (estandarizado
+entre 0 y 1).
 
 ### Docker run
 
@@ -151,13 +154,10 @@ docker run --rm -v $(pwd)/data:/app/data -v $(pwd)/output:/app/output \
 
 ### vegetacion: NDVI semanal por Sentinel-2
 
-GRASS dockerizado (2026-09-07): la imagen usa `ubuntu:24.04` como base, no
-`debian:bookworm-slim`, a propósito -- el repo `universe` de Ubuntu 24.04
-(noble) tiene `grass-core` en la versión **exacta** que corre en el host
-(8.3.2-1ubuntu2); Debian bookworm sólo ofrece GRASS 8.2.1, una versión
-distinta que podría dar resultados ligeramente distintos en resampleos y
-cálculos. Verificado además con una corrida real (semana ya procesada,
-Sentinel-2 real): rasters de salida bit-idénticos a los del host.
+Corre GRASS GIS dentro de un contenedor con base `ubuntu:24.04`: el repo
+`universe` de Ubuntu 24.04 distribuye `grass-core` en la misma versión
+exacta que corre en el host (8.3.2), lo que evita diferencias de resultado
+por versión.
 
 Build:
 
@@ -166,7 +166,7 @@ cd espacializacion
 docker build -t vegetacion:test -f vegetacion.Dockerfile .
 ```
 
-Corrida de **una semana**, interactiva (pide localidad, fecha, ROI):
+Corrida de una semana, interactiva (pide localidad, fecha y ROI):
 
 ```bash
 docker run --rm -it \
@@ -179,16 +179,15 @@ docker run --rm -it \
 grass /grassdata/posgar2007_4_cba/MCDA --exec python3 src/calculo_vegetacion.py
 ```
 
-Montar `/home/tomas/grassdata` (el mapset real) es lo que hace que esto no
-vuelva a importar/reprocesar desde cero cada vez -- sin ese volumen, el
-contenedor arrancaría con la location vacía que trae la imagen (útil sólo
-para un deploy nuevo en otra máquina, donde no existe mapset previo).
+Montar `/home/tomas/grassdata` (el mapset real) evita reprocesar todo
+desde cero en cada corrida. Sin ese volumen, el contenedor arranca con la
+location vacía que trae la imagen, que solo sirve para un despliegue nuevo
+en una máquina sin mapset previo.
 
-**Backfill de un rango de semanas**: `scripts/run_veg_backfill.sh` (ahora
-corre en el contenedor de arriba, no en GRASS del host). Recorre 4
-localidades × N semanas (desde una fecha fija hasta hoy), salteando
-automáticamente lo que ya existe en `data/vegetacion/`: así que es seguro
-relanzarlo después de una interrupción, retoma solo lo que falta:
+Backfill de un rango de semanas, con `scripts/run_veg_backfill.sh`: recorre
+4 localidades por N semanas (desde una fecha fija hasta hoy), salteando lo
+que ya existe en `data/vegetacion/`. Es seguro relanzarlo después de una
+interrupción, retoma solo lo que falta:
 
 ```bash
 cd espacializacion
@@ -196,18 +195,17 @@ nohup bash scripts/run_veg_backfill.sh >> scripts/veg_backfill_master.log 2>&1 &
 echo $! > scripts/veg_backfill_pid.txt
 ```
 
-Para pausarlo de forma segura (nunca matarlo a mitad de una semana: deja
-una carpeta parcial que después se saltea como si estuviera completa):
-esperar a ver `OK` en `veg_backfill_master.log` para la semana en curso,
-recién ahí matar los procesos y, si igual quedó algo a mitad de camino,
-borrar esa carpeta específica en `data/vegetacion/`.
+Para pausarlo de forma segura hay que esperar a ver `OK` en
+`veg_backfill_master.log` para la semana en curso antes de matar el
+proceso: si se lo mata a mitad de una semana, deja una carpeta parcial que
+después se saltea como si estuviera completa. Si eso pasa, hay que borrar
+esa carpeta puntual en `data/vegetacion/`.
 
-### capas-estaticas: población/NBI/construcciones para MCDA
+### capas-estaticas: población, NBI y construcciones para el MCDA
 
-También dockerizado 2026-09-07 (misma imagen base y misma razón que
-vegetación: GRASS 8.3.2 exacto). Verificado reprocesando una localidad ya
-calculada (gid 1300): los 3 rasters categorizados a 100m dieron
-bit-idénticos a los del host (0 píxeles distintos).
+Corre en Docker igual que vegetación, con la misma base y la misma versión
+de GRASS. A diferencia de vegetación, no es periódico: los datasets son
+estáticos, se procesan una vez por localidad y quedan.
 
 Build:
 
@@ -216,10 +214,8 @@ cd espacializacion
 docker build -t capas-estaticas:test -f capas_estaticas.Dockerfile .
 ```
 
-No es periódico como vegetación: son datasets estáticos, se procesan una
-vez por localidad y quedan. `scripts/run_variables_estaticas.sh` corre las
-4 localidades conocidas salteando las que ya están hechas (así que
-relanzarlo no repite trabajo):
+`scripts/run_variables_estaticas.sh` corre las 4 localidades conocidas
+salteando las que ya están hechas, así que relanzarlo no repite trabajo:
 
 ```bash
 cd espacializacion
@@ -227,7 +223,8 @@ bash scripts/run_variables_estaticas.sh          # las 4 conocidas, saltea lo he
 bash scripts/run_variables_estaticas.sh 1300     # solo un gid puntual
 ```
 
-También se puede correr manualmente (interactivo, pide el gid por input):
+También se puede correr manualmente, interactivo, pidiendo el gid por
+input:
 
 ```bash
 cd espacializacion
@@ -235,54 +232,51 @@ grass /home/tomas/grassdata/posgar2007_4_cba/MCDA --exec python3 src/variables_M
 ```
 
 Depende de datasets externos grandes (FABDEM, WorldPop, NBI, Open
-Buildings) que **no están en el repo**: rutas absolutas configuradas en
+Buildings) que no están en el repo: las rutas están en las constantes
 `PATH_*` al principio de `src/variables_MCDA.py`.
 
-#### Agregar una localidad nueva (checklist completo)
+#### Agregar una localidad nueva
 
-`variables_MCDA.py` es un paso más de un total de 7 lugares que hay que
-tocar para que una localidad nueva quede realmente integrada al sistema.
-Orden sugerido:
+Integrar una localidad nueva implica tocar 8 lugares del sistema, en este
+orden:
 
 1. **ROI**: generarlo con `calculo_vegetacion.py` (opción 2 del prompt:
-   "Construir ROI desde shapefile de municipios, filtrar por gid + buffer")
-   → queda cacheado en `resources/roi/roi_gid_<gid>_*.gpkg`. Sin esto,
-   `run_variables_estaticas.sh` la saltea con FALLO.
-2. **Variables estáticas**: `bash scripts/run_variables_estaticas.sh <gid>`
-   (este paso). Confirmar que los datasets externos (FABDEM, Open
-   Buildings, WorldPop, NBI) cubren la nueva localidad.
+   "Construir ROI desde shapefile de municipios, filtrar por gid y
+   buffer"), queda cacheado en `resources/roi/roi_gid_<gid>_*.gpkg`. Sin
+   esto, `run_variables_estaticas.sh` la saltea con error.
+2. **Variables estáticas**: `bash scripts/run_variables_estaticas.sh <gid>`.
+   Conviene confirmar antes que los datasets externos (FABDEM, Open
+   Buildings, WorldPop, NBI) cubren la localidad nueva.
 3. **Clima**: agregar `[nombre]` con `lat`/`lon` en
    `modelo-temporal/resources/get_weather.cfg`, y correr un backfill
-   histórico (ver sección "Descargar clima: histórico" más arriba).
+   histórico (sección "Descargar clima: histórico" más arriba).
 4. **Modelo temporal**: agregar `(gid, nombre)` a la lista de localidades
    en `modelo-temporal/src/correr_modelo_4loc.py`.
 5. **Vegetación**: agregar `[nombre]="resources/roi/roi_gid_<gid>_*.gpkg"`
    al `ROIS` de `espacializacion/scripts/run_veg_backfill.sh`, y correr un
-   backfill histórico (`nohup bash scripts/run_veg_backfill.sh &`, ver
-   arriba).
+   backfill histórico.
 6. **MCDA**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
    `espacializacion/src/calculo_mcda.py`, el gid a la lista de
    `espacializacion/scripts/correr_mcda_todas.sh`, y rebuildear
-   `geoprocesos:test` (las variables estáticas del paso 2 se hornean en la
-   imagen al buildear, no se leen en vivo).
+   `geoprocesos:test` — las variables estáticas del paso 2 quedan
+   horneadas en esa imagen al buildear, no se leen en vivo.
 7. **Índice de actividad**: agregar `"<gid>": "nombre"` a `LOCALIDADES` en
    `espacializacion/src/calculo_indice_actividad.py`.
-8. **Dashboard**: agregar el gid a los diccionarios `NOMBRES`/slugs en
-   `dashboard/app.py`, y calcular/agregar su umbral de Youden (`YOUDEN`) y
-   sus bounds de oviposición -- estos dos requieren haber corrido el
-   modelo con datos históricos suficientes para calibrarlos, no son un
-   valor arbitrario. Ver `dashboard/README.md`.
+8. **Dashboard**: agregar el gid a los diccionarios de nombres en
+   `dashboard/app.py`, y calcular su umbral de Youden y sus bounds de
+   oviposición. Estos dos valores requieren haber corrido el modelo con
+   datos históricos suficientes para calibrarlos: no son arbitrarios. Ver
+   `dashboard/README.md`.
 
-No hay un solo script que haga todo esto de punta a punta: los pasos 3-8
-tocan calibración (Youden, spin-up del modelo) que necesita juicio, no solo
-ejecución. Este checklist es la referencia para no perder ningún paso.
+Los pasos 3 a 8 tocan calibración (Youden, spin-up del modelo) que
+requiere criterio, no solo ejecución, así que no hay un único script que
+haga todo esto de punta a punta. Esta lista es la referencia para no
+saltear ningún paso.
 
 ### MCDA (idoneidad espacial)
 
-No usa GRASS (rasterio/numpy puro), pero corre en el contenedor
-`geoprocesos:test` igual que índice de actividad (dockerizado 2026-09-07,
-verificado sin diferencias contra la salida del host en 87 semanas de una
-localidad): `scripts/correr_mcda_todas.sh`, o manual:
+No usa GRASS: es rasterio y numpy puro. Corre en el mismo contenedor
+`geoprocesos:test` que el índice de actividad.
 
 ```bash
 cd espacializacion
@@ -292,9 +286,9 @@ echo "1252,1271,1300,1385" | docker run --rm -i \
   geoprocesos:test python3 src/calculo_mcda.py
 ```
 
-`estaticas/` (construcciones/población/NBI) se hornea en la imagen al
-buildear -- si se agrega una localidad nueva (variables estáticas nuevas),
-hay que rebuildear `geoprocesos:test` para que las vea.
+`estaticas/` (construcciones, población, NBI) se hornea en la imagen al
+buildear. Si se agrega una localidad nueva hay que rebuildear
+`geoprocesos:test` para que la vea.
 
 ### Índice de actividad (idoneidad × oviposición)
 
@@ -305,8 +299,8 @@ cd espacializacion
 docker build -t geoprocesos:test -f geoprocesos.Dockerfile .
 ```
 
-Corrida (sin argumentos: escanea todos los MCDA disponibles y todas las
-localidades, saltea lo ya calculado):
+Corrida sin argumentos: escanea todos los MCDA disponibles y todas las
+localidades, salteando lo ya calculado.
 
 ```bash
 docker run --rm \
@@ -316,22 +310,24 @@ docker run --rm \
   geoprocesos:test python3 src/calculo_indice_actividad.py
 ```
 
-Salida: `output/indice_actividad/{fecha}_{gid}_indice_actividad.tif` +
+Salida: `output/indice_actividad/{fecha}_{gid}_indice_actividad.tif` y
 `_sigma.tif` (desvío intra-semanal) por localidad y semana.
 
 ---
 
 ## orquestador
 
-Automatización semanal (cron, martes) que encadena clima → modelo temporal
-→ vegetación → MCDA → índice de actividad. Ver `orquestador/README.md` para
-el detalle completo (cómo correrlo a mano, cómo está anclado el corte
-semanal al martes, formato del estado consolidado).
+Un script del host (no un contenedor) que corre automáticamente los
+miércoles, encadenando clima → modelo temporal → vegetación → MCDA →
+índice de actividad. Ver `orquestador/README.md` para el detalle completo:
+cómo correrlo a mano, cómo se calcula la fecha de referencia semanal, y el
+formato del estado consolidado.
 
 ## dashboard
 
-Visualización (Streamlit + Leaflet). Ver `dashboard/README.md` para build y
-run. Servicio persistente aparte, no forma parte de la corrida semanal.
+Visualización con Streamlit y Leaflet. Ver `dashboard/README.md` para
+build y ejecución. Es un servicio persistente aparte, no forma parte de la
+corrida semanal.
 
 ```bash
 cd dashboard
@@ -342,15 +338,11 @@ docker build -t dashboard:test -f Dockerfile .
 
 ## Pendiente
 
-- **Software ya resuelto** (2026-09-07): vegetación y capas-estáticas
-  corren en Docker con GRASS 8.3.2 (misma versión exacta que el host, vía
-  `ubuntu:24.04` + `grass-core` del repo `universe` -- no la imagen
-  `osgeo/grass-gis` planeada originalmente, que no garantizaba esa versión
-  exacta). Todos los pasos del pipeline semanal corren en contenedor
-  ahora, ninguno depende de tener GRASS/Python instalado en la máquina.
-- **Datasets externos**: esto resuelve la reproducibilidad de *software*,
-  no la de *datos*. FABDEM, Open Buildings, WorldPop y NBI (~20GB, bajo
-  `/home/tomas/gisdata/GIS_MCDA/`) siguen siendo un volumen montado desde
-  el host, con proveniencia sin documentar -- para levantar todo esto en
-  un servidor nuevo hace falta copiar ese directorio y documentar de dónde
-  salió cada dataset.
+Todos los pasos del pipeline semanal corren en contenedor: ninguno
+depende de tener GRASS o Python instalados en la máquina que los dispara.
+Lo que falta es la reproducibilidad de los *datos*, no del software:
+FABDEM, Open Buildings, WorldPop y NBI (unos 20GB, bajo
+`/home/tomas/gisdata/GIS_MCDA/`) son un volumen montado desde el host, sin
+su procedencia documentada. Levantar el sistema en un servidor nuevo
+requiere copiar ese directorio a mano y documentar de dónde salió cada
+dataset.
