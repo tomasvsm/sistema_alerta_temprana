@@ -334,16 +334,3 @@ corrida semanal.
 cd dashboard
 docker build -t dashboard:test -f Dockerfile .
 ```
-
----
-
-## Pendiente
-
-Todos los pasos del pipeline semanal corren en contenedor: ninguno
-depende de tener GRASS o Python instalados en la máquina que los dispara.
-Lo que falta es la reproducibilidad de los *datos*, no del software:
-FABDEM, Open Buildings, WorldPop y NBI (unos 20GB, bajo
-`/home/tomas/gisdata/GIS_MCDA/`) son un volumen montado desde el host, sin
-su procedencia documentada. Levantar el sistema en un servidor nuevo
-requiere copiar ese directorio a mano y documentar de dónde salió cada
-dataset.
