@@ -40,6 +40,24 @@ echo "======================================================="
 echo "  CORRIDA SEMANAL -- $FECHA_CORRIDA (referencia: martes $FECHA_REF)"
 echo "======================================================="
 
+# Evita que dos corridas (ej. un reintento de cron y una corrida a mano)
+# se pisen al mismo tiempo -- pueden terminar escribiendo el mismo mapset
+# de GRASS o los mismos CSV de clima a la vez. flock (no un simple
+# archivo PID) porque se libera solo si el proceso muere de cualquier
+# forma, sin dejar un lock trabado. `-n`: no espera, si ya esta tomado
+# sale ya mismo (no tiene sentido hacer cola, el que esta corriendo ya
+# va a terminar la cadena entera).
+# Bug real 2026-09-08: una corrida a mano y el reintento de las 12hs
+# corrieron a la vez, y el segundo alcanzo a borrar (sin llegar a
+# reponer) los CSV de clima que el primero ya habia dejado bien -- hubo
+# que restaurarlos a mano desde el .bak.
+LOCKFILE="$LOGDIR/run_semanal.lock"
+exec 200>"$LOCKFILE"
+if ! flock -n 200; then
+    echo "  Ya hay una corrida de run_semanal.sh en curso -- salgo sin hacer nada."
+    exit 0
+fi
+
 # El cron llama a este script 3 veces los martes (6, 9 y 12hs) para poder
 # reintentar si la maquina estaba apagada o sin internet a las 6 -- pero
 # si la corrida de esta semana YA salio bien antes, no hace falta repetir
