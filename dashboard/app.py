@@ -103,6 +103,14 @@ VMAX_SIGMA = 0.15
 # recalcular todo en cada rerun.
 CACHE_TTL = "1h"
 
+# El CSV meteorologico arranca en 2023 (dos anios de spinup que necesita
+# el modelo poblacional antes de la primera fecha real), pero el resto
+# del sistema (indice de actividad, idoneidad) recien tiene datos desde
+# que arranco la espacializacion. Se recorta el grafico a esa fecha para
+# no mostrar dos anios de datos que ningun otro panel tiene y aligerar
+# el render.
+FECHA_INICIO_ESPACIALIZACION = pd.Timestamp("2025-01-14")
+
 
 def bounds_categoricos(gid: str) -> list[float]:
     q33, q66 = TERCILES_CAMPO[gid]
@@ -1316,7 +1324,7 @@ with tab_panel:
             st.info("Sin datos meteorológicos para esta localidad.")
         else:
             hoy = fecha_referencia()
-            ventana = df_met
+            ventana = df_met[df_met["date"] >= FECHA_INICIO_ESPACIALIZACION]
             # el CSV del modelo trae tanto clima observado como
             # pronosticado (mismo archivo, sin columna que distinga uno
             # de otro) -- fin_pronost es simplemente la ultima fecha
