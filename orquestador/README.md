@@ -52,6 +52,15 @@ semana (mismo `fecha_ref`) ya salió sin errores, el llamado de las 9 o las
 3 fallan, queda como estaba antes: cartel rojo en el log, esperando que
 se corra a mano.
 
+**Lock contra corridas simultáneas** (agregado 2026-09-08): si una corrida
+a mano y un reintento de cron caen al mismo tiempo, `run_semanal.sh` tiene
+un `flock` al principio -- el segundo que llega ve el lock tomado e
+imprime "Ya hay una corrida en curso" y sale sin tocar nada. Bug real que
+motivó esto: una corrida a mano y el reintento de las 12hs corrieron a la
+vez, y el segundo alcanzó a borrar (sin llegar a reponer) los CSV de
+clima que el primero ya había dejado bien -- hubo que restaurarlos a mano
+desde el `.bak`.
+
 Para verla o editarla: `crontab -l` / `crontab -e`.
 
 **PATH explícito en el crontab** (agregado 2026-09-07): sin esto, cron corre
