@@ -1227,146 +1227,167 @@ with tab_panel:
                 width=410,
             )
 
-    with st.expander("Evolución del índice de actividad (serie temporal)"):
-        df_serie = serie_temporal_indice_actividad(gid)
-        if df_serie.empty:
-            st.info("Sin semanas suficientes para mostrar evolución.")
-        else:
-            fig_serie = go.Figure()
-            fig_serie.add_trace(go.Scatter(
-                x=df_serie["date"], y=df_serie["media"],
-                mode="lines+markers", name="Media espacial", line=dict(color="#d7191c"),
-                hovertemplate="Semana: %{x|%d/%m/%Y}<br>Media: %{y:.3f}<extra></extra>",
-            ))
-            fig_serie.add_trace(go.Scatter(
-                x=df_serie["date"], y=df_serie["maximo"],
-                mode="lines", name="Máximo espacial",
-                line=dict(color="#d7191c", dash="dot", width=1),
-                hovertemplate="Semana: %{x|%d/%m/%Y}<br>Máximo: %{y:.3f}<extra></extra>",
-            ))
-            fig_serie.update_layout(
-                height=420, margin=dict(t=30, b=10, l=10, r=10),
-                yaxis_title="Índice de actividad", xaxis_title=None,
-                legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
-                xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
-                # asi la fecha exacta de la semana se ve al pasar el
-                # mouse aunque los ticks del eje, a este zoom, solo
-                # alcancen a mostrar mes/año (no distinguen semana).
-                hovermode="x unified",
-            )
-            st.plotly_chart(fig_serie, width=950)
-
-    with st.expander("Índice de idoneidad de hábitat y variables espaciales utilizadas"):
-        st.markdown("**Índice de idoneidad de hábitat**")
-        if not semanas_idoneidad_disponibles(gid):
-            st.info("Sin datos de idoneidad para esta localidad.")
-        else:
-            with st.container(horizontal=True, vertical_alignment="center"):
-                st.plotly_chart(figura_animada_idoneidad(gid), width=500)
-                etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
-                st.markdown(
-                    caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
-                    unsafe_allow_html=True,
+    EXP_SERIE_KEY = "exp_serie_temporal"
+    with st.expander(
+        "Evolución del índice de actividad (serie temporal)",
+        key=EXP_SERIE_KEY, on_change="rerun",
+    ):
+        if st.session_state.get(EXP_SERIE_KEY):
+            df_serie = serie_temporal_indice_actividad(gid)
+            if df_serie.empty:
+                st.info("Sin semanas suficientes para mostrar evolución.")
+            else:
+                fig_serie = go.Figure()
+                fig_serie.add_trace(go.Scatter(
+                    x=df_serie["date"], y=df_serie["media"],
+                    mode="lines+markers", name="Media espacial", line=dict(color="#d7191c"),
+                    hovertemplate="Semana: %{x|%d/%m/%Y}<br>Media: %{y:.3f}<extra></extra>",
+                ))
+                fig_serie.add_trace(go.Scatter(
+                    x=df_serie["date"], y=df_serie["maximo"],
+                    mode="lines", name="Máximo espacial",
+                    line=dict(color="#d7191c", dash="dot", width=1),
+                    hovertemplate="Semana: %{x|%d/%m/%Y}<br>Máximo: %{y:.3f}<extra></extra>",
+                ))
+                fig_serie.update_layout(
+                    height=420, margin=dict(t=30, b=10, l=10, r=10),
+                    yaxis_title="Índice de actividad", xaxis_title=None,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
+                    xaxis=dict(tickformatstops=TICKFORMATSTOPS_FECHA),
+                    # asi la fecha exacta de la semana se ve al pasar el
+                    # mouse aunque los ticks del eje, a este zoom, solo
+                    # alcancen a mostrar mes/año (no distinguen semana).
+                    hovermode="x unified",
                 )
+                st.plotly_chart(fig_serie, width=950)
 
-        st.divider()
+    # st.expander no evita que su contenido se calcule y se mande al
+    # navegador cuando esta colapsado -- el codigo de adentro corre en
+    # cada rerun igual. Ese contenido incluye 4 mapas folium (cada uno un
+    # iframe que baja Leaflet/jQuery/Bootstrap/FontAwesome desde CDNs
+    # externos y pide tiles a ArcGIS) mas dos animaciones Plotly de ~90
+    # cuadros, todo eso en CADA cambio de localidad o semana aunque el
+    # usuario nunca haya abierto el panel. Por eso se usa `key=` para leer
+    # el estado abierto/cerrado y recien construir el contenido si esta
+    # realmente expandido.
+    EXP_IDONEIDAD_KEY = "exp_idoneidad_variables"
+    with st.expander(
+        "Índice de idoneidad de hábitat y variables espaciales utilizadas",
+        key=EXP_IDONEIDAD_KEY, on_change="rerun",
+    ):
+        if st.session_state.get(EXP_IDONEIDAD_KEY):
+            st.markdown("**Índice de idoneidad de hábitat**")
+            if not semanas_idoneidad_disponibles(gid):
+                st.info("Sin datos de idoneidad para esta localidad.")
+            else:
+                with st.container(horizontal=True, vertical_alignment="center"):
+                    st.plotly_chart(figura_animada_idoneidad(gid), width=500)
+                    etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
+                    st.markdown(
+                        caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
+                        unsafe_allow_html=True,
+                    )
 
-        st.markdown("**Variables espaciales**")
-        col_v1, col_v2, col_v3, col_v4 = st.columns(4)
-        for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
-            with col:
-                arr_var, bounds_var = cargar_variable_estatica_4326(gid, variable)
-                _, _, titulo_var, etiquetas_var = VARIABLES_ESTATICAS[variable]
-                if arr_var is None:
-                    st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
+            st.divider()
+
+            st.markdown("**Variables espaciales**")
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            for col, variable in zip((col_v1, col_v2, col_v3), ("construcciones", "poblacion", "nbi")):
+                with col:
+                    arr_var, bounds_var = cargar_variable_estatica_4326(gid, variable)
+                    _, _, titulo_var, etiquetas_var = VARIABLES_ESTATICAS[variable]
+                    if arr_var is None:
+                        st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
+                    else:
+                        with st.container(width=230, key=f"var_{variable}"):
+                            st.markdown(
+                                f'<div style="text-align:center; font-weight:600; '
+                                f'margin-bottom:2px;">{titulo_var}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st_folium(
+                                mapa_folium_compacto(arr_var, bounds_var, gid),
+                                height=230, width=230, returned_objects=[],
+                                key=f"folium_{gid}_{variable}",
+                            )
+                            st.markdown(
+                                caja_leyenda_html(
+                                    titulo_var, PALETA_VIRIDIS5, etiquetas_var,
+                                    valores=VALORES_CATEGORIA_5,
+                                ),
+                                unsafe_allow_html=True,
+                            )
+            with col_v4:
+                if not vegetacion_disponible(gid):
+                    st.markdown("**Vegetación**")
+                    st.info("Sin datos de vegetación para esta localidad.")
                 else:
-                    with st.container(width=230, key=f"var_{variable}"):
+                    with st.container(width=230, key="var_vegetacion"):
                         st.markdown(
-                            f'<div style="text-align:center; font-weight:600; '
-                            f'margin-bottom:2px;">{titulo_var}</div>',
+                            '<div style="text-align:center; font-weight:600; '
+                            'margin-bottom:2px;">Vegetación</div>',
                             unsafe_allow_html=True,
                         )
-                        st_folium(
-                            mapa_folium_compacto(arr_var, bounds_var, gid),
-                            height=230, width=230, returned_objects=[],
-                            key=f"folium_{gid}_{variable}",
-                        )
+                        st.plotly_chart(figura_animada_vegetacion(gid), width=230)
                         st.markdown(
                             caja_leyenda_html(
-                                titulo_var, PALETA_VIRIDIS5, etiquetas_var,
+                                "Vegetación", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
                                 valores=VALORES_CATEGORIA_5,
                             ),
                             unsafe_allow_html=True,
                         )
-        with col_v4:
-            if not vegetacion_disponible(gid):
-                st.markdown("**Vegetación**")
-                st.info("Sin datos de vegetación para esta localidad.")
+
+    EXP_METEO_KEY = "exp_datos_meteorologicos"
+    with st.expander("Datos meteorológicos", key=EXP_METEO_KEY, on_change="rerun"):
+        if st.session_state.get(EXP_METEO_KEY):
+            df_met = cargar_serie_meteorologica(gid)
+            if df_met is None:
+                st.info("Sin datos meteorológicos para esta localidad.")
             else:
-                with st.container(width=230, key="var_vegetacion"):
-                    st.markdown(
-                        '<div style="text-align:center; font-weight:600; '
-                        'margin-bottom:2px;">Vegetación</div>',
-                        unsafe_allow_html=True,
-                    )
-                    st.plotly_chart(figura_animada_vegetacion(gid), width=230)
-                    st.markdown(
-                        caja_leyenda_html(
-                            "Vegetación", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
-                            valores=VALORES_CATEGORIA_5,
-                        ),
-                        unsafe_allow_html=True,
-                    )
+                hoy = fecha_referencia()
+                ventana = df_met[df_met["date"] >= FECHA_INICIO_ESPACIALIZACION]
+                # el CSV del modelo trae tanto clima observado como
+                # pronosticado (mismo archivo, sin columna que distinga uno
+                # de otro) -- fin_pronost es simplemente la ultima fecha
+                # disponible, que cae unos dias despues de hoy.
+                fin_pronost = ventana["date"].max()
 
-    with st.expander("Datos meteorológicos"):
-        df_met = cargar_serie_meteorologica(gid)
-        if df_met is None:
-            st.info("Sin datos meteorológicos para esta localidad.")
-        else:
-            hoy = fecha_referencia()
-            ventana = df_met[df_met["date"] >= FECHA_INICIO_ESPACIALIZACION]
-            # el CSV del modelo trae tanto clima observado como
-            # pronosticado (mismo archivo, sin columna que distinga uno
-            # de otro) -- fin_pronost es simplemente la ultima fecha
-            # disponible, que cae unos dias despues de hoy.
-            fin_pronost = ventana["date"].max()
-
-            fig_met = go.Figure()
-            fig_met.add_trace(go.Bar(
-                x=ventana["date"], y=ventana["precipitations"],
-                name="Precipitación (mm)", marker_color="#4a90d9", yaxis="y1",
-            ))
-            fig_met.add_trace(go.Scatter(
-                x=ventana["date"], y=ventana["temperature"],
-                name="Temperatura (°C)", line=dict(color="#e07b39"), yaxis="y2",
-            ))
-            fig_met.add_trace(go.Scatter(
-                x=ventana["date"], y=ventana["rh"],
-                name="Humedad relativa (%)", line=dict(color="#5aa469"), yaxis="y2",
-            ))
-            if fin_pronost > hoy:
-                fig_met.add_vrect(x0=hoy, x1=fin_pronost, fillcolor="gray", opacity=0.08, line_width=0)
-                fig_met.add_annotation(
-                    x=hoy + (fin_pronost - hoy) / 2, y=1, yref="paper", yanchor="top",
-                    text="Pronóstico", showarrow=False, font=dict(size=10, color="gray"),
+                fig_met = go.Figure()
+                fig_met.add_trace(go.Bar(
+                    x=ventana["date"], y=ventana["precipitations"],
+                    name="Precipitación (mm)", marker_color="#4a90d9", yaxis="y1",
+                ))
+                fig_met.add_trace(go.Scatter(
+                    x=ventana["date"], y=ventana["temperature"],
+                    name="Temperatura (°C)", line=dict(color="#e07b39"), yaxis="y2",
+                ))
+                fig_met.add_trace(go.Scatter(
+                    x=ventana["date"], y=ventana["rh"],
+                    name="Humedad relativa (%)", line=dict(color="#5aa469"), yaxis="y2",
+                ))
+                if fin_pronost > hoy:
+                    fig_met.add_vrect(x0=hoy, x1=fin_pronost, fillcolor="gray", opacity=0.08, line_width=0)
+                    fig_met.add_annotation(
+                        x=hoy + (fin_pronost - hoy) / 2, y=1, yref="paper", yanchor="top",
+                        text="Pronóstico", showarrow=False, font=dict(size=10, color="gray"),
+                    )
+                fig_met.add_vline(x=hoy, line_dash="dot", line_color="gray")
+                fig_met.update_layout(
+                    height=350, margin=dict(t=50, b=10, l=10, r=10),
+                    yaxis=dict(title="Precipitación (mm)"),
+                    yaxis2=dict(title="°C / %", overlaying="y", side="right"),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
+                    # Datos completos desde siempre en el grafico (autoscale
+                    # los muestra), pero al abrir arranca con zoom al ultimo
+                    # año hasta el final del pronostico -- el rango largo
+                    # completo casi no se distingue, y antes se cortaba
+                    # justo en "hoy" dejando afuera los dias pronosticados.
+                    xaxis=dict(
+                        tickformatstops=TICKFORMATSTOPS_FECHA,
+                        range=[hoy - pd.Timedelta(days=365), fin_pronost + pd.Timedelta(days=1)],
+                    ),
                 )
-            fig_met.add_vline(x=hoy, line_dash="dot", line_color="gray")
-            fig_met.update_layout(
-                height=350, margin=dict(t=50, b=10, l=10, r=10),
-                yaxis=dict(title="Precipitación (mm)"),
-                yaxis2=dict(title="°C / %", overlaying="y", side="right"),
-                legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0.5, xanchor="center"),
-                # Datos completos desde siempre en el grafico (autoscale
-                # los muestra), pero al abrir arranca con zoom al ultimo
-                # año hasta el final del pronostico -- el rango largo
-                # completo casi no se distingue, y antes se cortaba
-                # justo en "hoy" dejando afuera los dias pronosticados.
-                xaxis=dict(
-                    tickformatstops=TICKFORMATSTOPS_FECHA,
-                    range=[hoy - pd.Timedelta(days=365), fin_pronost + pd.Timedelta(days=1)],
-                ),
-            )
-            st.plotly_chart(fig_met, width=960)
+                st.plotly_chart(fig_met, width=960)
 
     st.divider()
     st.markdown(footer_html(), unsafe_allow_html=True)
