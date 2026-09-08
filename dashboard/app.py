@@ -1367,107 +1367,111 @@ with tab_acerca:
         """
 Este sistema estima, semana a semana y por zona, la actividad de
 *Aedes aegypti* en cuatro localidades de Córdoba: Córdoba capital, Río
-Cuarto, Villa María y Salsipuedes.
+Cuarto, Villa María y Salsipuedes. El índice de actividad final combina un
+índice de oviposición (temporal, forzado por datos meteorológicos) con un
+índice de idoneidad de hábitat (espacial, MCDA).
 
-El resultado final, el **índice de actividad**, sale de combinar dos
-cosas: qué tan favorable es cada lugar para que el mosquito viva y se
-reproduzca (**idoneidad de hábitat**), y qué tan alta es la puesta de
-huevos esa semana según el clima reciente (**índice de oviposición**).
-Ninguno de los dos alcanza solo: un lugar puede ser muy favorable para el
-mosquito todo el año, pero si esa semana no llovió ni hizo calor, la
-actividad real es baja; y al revés, una semana muy calurosa no genera
-actividad en un lugar donde el mosquito no tiene dónde reproducirse.
+### Índice de oviposición
 
-### Paso 1: ¿qué tan alta es la puesta de huevos esta semana?
-
-Esto sale de un modelo matemático que simula día a día el ciclo de vida
-del mosquito (huevo, larva, pupa, adulto), usando como entrada la
-temperatura, la humedad y la lluvia de cada localidad
+Se deriva de un modelo de dinámica poblacional de *Aedes aegypti* (huevo,
+larva, pupa, adulto) forzado día a día por temperatura, humedad y
+precipitación
 ([Aguirre et al., 2021](https://doi.org/10.1016/j.ecoinf.2021.101351)).
-De ahí sale una cantidad de huevos puestos por día, que se convierte en el
-**índice de oviposición**: un número entre 0 y 1 que compara la puesta de
-hoy contra el último año en ese mismo lugar, no contra un valor absoluto.
-Un índice de 1 no significa "muchos huevos" en términos generales, sino
-"tantos como el pico más alto del último año ahí mismo".
+El número de huevos que predice el modelo para cada día se estandariza
+contra su propia ventana móvil de 365 días previos:
+"""
+    )
+    st.latex(
+        r"IO_d = \frac{huevos_d - \min_{[d-365,\,d]}(huevos)}"
+        r"{\max_{[d-365,\,d]}(huevos) - \min_{[d-365,\,d]}(huevos)}"
+    )
+    st.markdown(
+        """
+Un valor de 1 indica el máximo de oviposición del último año en esa
+localidad, no una cantidad absoluta de huevos. Los siete valores diarios
+de cada semana, cada uno con su propia ventana de 365 días, dan además un
+desvío estándar intrasemanal que se reporta como incertidumbre del
+índice.
 
-### Paso 2: ¿qué tan favorable es cada lugar para el mosquito?
+El índice incorpora pronóstico meteorológico (CFS, NOAA) a 14 días además
+del dato observado, por lo que su gráfico muestra un tramo a futuro. La
+idoneidad de hábitat y el índice de actividad, en cambio, dependen de
+imágenes satelitales reales y son siempre retrospectivos.
 
-Esto no cambia semana a semana como el clima: depende de características
-más estables del terreno. Se combinan cuatro variables, cada una
-categorizada de 0 (nada favorable) a 1 (muy favorable):
+### Idoneidad de hábitat
+
+Combina cuatro variables espaciales, cada una categorizada entre 0 y 1,
+mediante análisis multicriterio (MCDA-AHP):
 """
     )
     st.image(
         str(ASSETS_DIR / "workflow_variables_espaciales.png"),
-        caption="Cómo se calcula cada una de las cuatro variables espaciales y sus categorías.",
-        width=700,
+        caption="Cálculo y categorización de cada una de las cuatro variables espaciales.",
+    )
+    st.latex(
+        r"MCDA(x,y) = W_{veg}\,V(x,y) + W_{per}\,P(x,y) "
+        r"+ W_{soc}\,S(x,y) + W_{con}\,C(x,y)"
     )
     st.markdown(
         """
-- **Vegetación**: se mide con el NDVI, un índice que se calcula a partir
-  de imágenes satelitales y que indica cuánta vegetación sana hay en cada
-  punto. Ni la vegetación muy densa ni la ausencia total de vegetación
-  favorecen al mosquito tanto como una vegetación moderada.
-- **Construcciones**: la altura de las edificaciones importa porque el
-  mosquito se cría cerca de la vivienda humana, en recipientes con agua;
-  las casas bajas resultan más favorables que los edificios altos.
-- **Población**: a mayor densidad de personas, más fuentes de sangre y
-  más recipientes con agua cerca.
-- **NBI (necesidades básicas insatisfechas)**: en zonas con más carencias
-  habitacionales suele haber más recipientes de almacenamiento de agua al
-  aire libre, lo que favorece la cría del mosquito.
+Los pesos se determinaron por comparación pareada (AHP) según dos
+criterios: la disponibilidad de sitios de cría (contenedores artificiales)
+y descanso, y la disponibilidad de fuentes de alimentación (sangre y
+fluidos vegetales). Construcciones y NBI se asociaron a la disponibilidad
+de sitios de cría: menor altura de edificación y mayor proporción de NBI
+se asumen asociadas a más recipientes artificiales aptos como criadero.
+La densidad poblacional se asoció a la disponibilidad de sangre. La
+vegetación se consideró aporte a ambos criterios —sitio de descanso y
+fuente de fluidos vegetales—, lo que explica su peso dominante:
 
-La altura de las construcciones no se mide directamente: se calcula
-restando dos modelos de elevación satelital, uno que incluye edificios y
-vegetación y otro que no, y usando los contornos de cada edificio para
-quedarse con su altura individual.
+| Variable | Peso |
+|---|---|
+| Vegetación (NDVI) | 0.5596 |
+| Población | 0.2495 |
+| NBI | 0.0955 |
+| Construcciones | 0.0955 |
 
-Combinando las cuatro variables se obtiene un mapa de **idoneidad de
-hábitat**: qué tan favorable es cada punto del mapa para el mosquito,
-independientemente de si esa semana hay huevos siendo puestos o no.
+La vegetación se actualiza semanalmente a partir de Sentinel-2; las otras
+tres variables son estáticas entre semanas y se realinean a la grilla del
+NDVI de cada semana por remuestreo de vecino más cercano.
 
-### Paso 3: el índice de actividad final
+### Índice de actividad
 
-El índice que se muestra en el mapa principal es, por cada punto y cada
-semana:
-
-`índice de actividad = idoneidad de hábitat × índice de oviposición`
-
-Un lugar con alta idoneidad y alta oviposición esa semana da un índice
-alto; si cualquiera de los dos es bajo, el índice también lo es.
+Combina los dos anteriores por píxel y por día:
+"""
+    )
+    st.latex(r"R_d(x,y) = MCDA_w(x,y) \times IO_d")
+    st.markdown("Promediado sobre los 7 días de la semana:")
+    st.latex(r"R_w(x,y) = \frac{1}{7}\sum_{d=1}^{7} R_d(x,y)")
+    st.markdown(
+        """
+con el desvío estándar intrasemanal disponible como capa de error (σ) en
+el mapa. Antes de la multiplicación se aplica un piso de 0.1 al índice de
+oviposición diario, para que los períodos de mínima actividad predicha no
+anulen la variabilidad espacial que aporta la idoneidad de hábitat.
 
 ### Cómo se leen los mapas
 
-Los mapas no muestran el índice crudo (un número entre 0 y 1) sino 4
-categorías: baja, media, alta y muy alta. Los cortes entre categorías no
-son arbitrarios ni iguales para las 4 localidades: se calibraron contra
-datos reales de ovitrampas (trampas que confirman presencia real de
-huevos) de cada localidad, buscando el punto de corte que mejor separa
-las semanas con presencia confirmada de las que no. Por eso el mismo
-valor de índice puede caer en una categoría distinta según la localidad.
-
-### Qué se proyecta a futuro y qué no
-
-El índice de oviposición incorpora un pronóstico meteorológico a 14 días,
-así que su gráfico muestra un tramo a futuro. El índice de actividad
-final, en cambio, siempre depende de imágenes satelitales reales — no hay
-forma de "pronosticar" una imagen satelital — así que la semana más
-reciente que se muestra en el mapa es siempre una semana ya transcurrida.
+Los mapas no muestran el índice crudo sino 4 categorías: baja, media,
+alta y muy alta. Los cortes entre categorías se calibraron contra datos
+reales de ovitrampas de cada localidad, buscando el punto de corte que
+mejor separa las semanas con presencia confirmada de las que no —no son
+iguales entre localidades, así que el mismo valor de índice puede caer en
+una categoría distinta según el lugar.
 
 ### Actualización automática
 
-El sistema se actualiza solo una vez por semana: descarga clima nuevo,
-vuelve a correr el modelo de oviposición, incorpora la imagen satelital
-más reciente disponible y recalcula la idoneidad y el índice de actividad
-final. Si algún paso falla esa semana, el resto sigue funcionando igual
-con lo que haya disponible, y el dashboard avisa arriba de todo si algo
-quedó desactualizado.
+El sistema se actualiza una vez por semana: descarga datos meteorológicos
+nuevos, vuelve a correr el modelo de oviposición, incorpora la imagen
+satelital más reciente disponible y recalcula la idoneidad y el índice de
+actividad. Si algún paso falla esa semana, el resto sigue funcionando
+igual con lo que haya disponible, y el dashboard avisa arriba de todo si
+algo quedó desactualizado.
 """
     )
     st.image(
         str(ASSETS_DIR / "workflow_sistema.png"),
         caption="Cómo está armada la actualización semanal automática.",
-        width=700,
     )
     st.markdown(
         """
