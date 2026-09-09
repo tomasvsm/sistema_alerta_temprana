@@ -787,7 +787,7 @@ def figura_estatica_idoneidad(gid: str, fecha: str) -> go.Figure:
         # centrado dentro del lienzo -- height tiene que quedar parecido
         # al width (500, ver st.plotly_chart) para que el cuadrado llene
         # el lienzo en vez de dejar franjas en blanco arriba/abajo.
-        height=500, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
+        height=380, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
     )
     return fig
 
@@ -1229,7 +1229,7 @@ with tab_panel:
             if not fechas_idoneidad:
                 st.info("Sin datos de idoneidad para esta localidad.")
             else:
-                with st.container(width=500, key="idoneidad_centrado"):
+                with st.container(width=560, key="idoneidad_centrado"):
                     key_semana_idoneidad = f"semana_idoneidad_{gid}"
                     st.select_slider(
                         "Recorrer semanas", options=fechas_idoneidad,
@@ -1239,7 +1239,7 @@ with tab_panel:
                     with st.container(horizontal=True, vertical_alignment="center"):
                         fecha_idoneidad_sel = st.session_state[key_semana_idoneidad]
                         st.plotly_chart(
-                            figura_estatica_idoneidad(gid, fecha_idoneidad_sel), width=500,
+                            figura_estatica_idoneidad(gid, fecha_idoneidad_sel), width=380,
                         )
                         etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
                         st.markdown(
