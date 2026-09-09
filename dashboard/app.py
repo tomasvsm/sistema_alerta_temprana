@@ -730,19 +730,11 @@ def vegetacion_disponible(gid: str) -> dict[str, str]:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def stack_vegetacion(gid: str) -> tuple[np.ndarray, list[str]]:
-    disponibles = vegetacion_disponible(gid)
-    fechas = sorted(disponibles.keys())
-    capas = [cargar_raster_nativo(disponibles[f], gid=gid) for f in fechas]
-    return np.stack(capas), fechas
-
-
-@st.cache_data(ttl=CACHE_TTL)
-def figura_animada_vegetacion(gid: str) -> go.Figure:
-    stack, fechas = stack_vegetacion(gid)
-    codigos = np.round(stack * 4)
+def figura_estatica_vegetacion(gid: str, fecha: str) -> go.Figure:
+    arr = cargar_raster_nativo(vegetacion_disponible(gid)[fecha], gid=gid)
+    codigo = np.round(arr * 4)
     fig = px.imshow(
-        codigos, animation_frame=0,
+        codigo,
         color_continuous_scale=_colorscale_escalonada(PALETA_VIRIDIS5),
         range_color=[0, 5], aspect="equal",
     )
@@ -752,26 +744,6 @@ def figura_animada_vegetacion(gid: str) -> go.Figure:
     fig.update_layout(
         height=420, margin=dict(t=10, b=10, l=10, r=10), coloraxis_showscale=False,
     )
-    # update_layout(updatemenus=[]) no alcanza -- fusiona por indice en vez
-    # de reemplazar la lista, y el boton Play/Stop que agrega px.imshow
-    # queda igual. Asignar el atributo directo si lo saca de verdad.
-    fig.layout.updatemenus = []
-    for i, frame in enumerate(fig.frames):
-        frame.name = fechas[i]
-    slider = fig.layout.sliders[0]
-    nuevos_steps = []
-    for i, step in enumerate(slider.steps):
-        step_dict = step.to_plotly_json()
-        step_dict["label"] = fmt_fecha(fechas[i])
-        step_dict["args"] = [[fechas[i]], step_dict["args"][1]]
-        nuevos_steps.append(step_dict)
-    slider.steps = nuevos_steps
-    slider.currentvalue = dict(prefix="Semana: ")
-
-    ultimo = len(fig.frames) - 1
-    fig.data[0].z = fig.frames[ultimo].data[0].z
-    slider.active = ultimo
-
     return fig
 
 
@@ -785,31 +757,21 @@ def semanas_idoneidad_disponibles(gid: str) -> list[str]:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def stack_idoneidad(gid: str) -> tuple[np.ndarray, list[str]]:
-    """Todas las semanas de idoneidad (MCDA) disponibles, categorizadas en
-    4 clases lineales (cuartos del rango [0,1]) y con los mismos
-    colores que el indice de actividad -- pero NO con los cortes de
-    Youden/terciles de bounds_categoricos(), que estan calibrados contra
-    el indice de actividad real (idoneidad x oviposicion, con fuerte
-    estacionalidad por el piso de oviposicion). El MCDA solo no tiene ese
-    factor estacional y su rango se mantiene medio-alto casi todo el
-    año en zona urbana, asi que esos cortes lo pintaban casi todo como
+def figura_estatica_idoneidad(gid: str, fecha: str) -> go.Figure:
+    """Idoneidad (MCDA) de una semana puntual, categorizada en 4 clases
+    lineales (cuartos del rango [0,1]) y con los mismos colores que el
+    indice de actividad -- pero NO con los cortes de Youden/terciles de
+    bounds_categoricos(), que estan calibrados contra el indice de
+    actividad real (idoneidad x oviposicion, con fuerte estacionalidad
+    por el piso de oviposicion). El MCDA solo no tiene ese factor
+    estacional y su rango se mantiene medio-alto casi todo el año en
+    zona urbana, asi que esos cortes lo pintaban casi todo como
     "alta"/"muy alta"."""
-    fechas = semanas_idoneidad_disponibles(gid)
-    capas = []
-    for fecha in fechas:
-        arr = cargar_raster_nativo(str(MCDA_DIR / f"{fecha}_{gid}_MCDA.tif"), gid=gid)
-        codigo = np.digitize(arr, [0.25, 0.5, 0.75]).astype(float)
-        codigo[np.isnan(arr)] = np.nan
-        capas.append(codigo)
-    return np.stack(capas), fechas
-
-
-@st.cache_data(ttl=CACHE_TTL)
-def figura_animada_idoneidad(gid: str) -> go.Figure:
-    stack, fechas = stack_idoneidad(gid)
+    arr = cargar_raster_nativo(str(MCDA_DIR / f"{fecha}_{gid}_MCDA.tif"), gid=gid)
+    codigo = np.digitize(arr, [0.25, 0.5, 0.75]).astype(float)
+    codigo[np.isnan(arr)] = np.nan
     fig = px.imshow(
-        stack, animation_frame=0,
+        codigo,
         color_continuous_scale=_colorscale_escalonada(PALETA),
         range_color=[0, len(PALETA)], aspect="equal",
     )
@@ -825,23 +787,6 @@ def figura_animada_idoneidad(gid: str) -> go.Figure:
         # cuadrado para acercarse a los 500 de ancho.
         height=590, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
     )
-    for i, frame in enumerate(fig.frames):
-        frame.name = fechas[i]
-    slider = fig.layout.sliders[0]
-    nuevos_steps = []
-    for i, step in enumerate(slider.steps):
-        step_dict = step.to_plotly_json()
-        step_dict["label"] = fmt_fecha(fechas[i])
-        step_dict["args"] = [[fechas[i]], step_dict["args"][1]]
-        nuevos_steps.append(step_dict)
-    slider.steps = nuevos_steps
-    slider.currentvalue = dict(prefix="Semana: ")
-    slider.pad = dict(t=10)
-
-    ultimo = len(fig.frames) - 1
-    fig.data[0].z = fig.frames[ultimo].data[0].z
-    slider.active = ultimo
-
     return fig
 
 
@@ -1277,11 +1222,22 @@ with tab_panel:
     ):
         if st.session_state.get(EXP_IDONEIDAD_KEY):
             st.markdown("**Índice de idoneidad de hábitat**")
-            if not semanas_idoneidad_disponibles(gid):
+            fechas_idoneidad = semanas_idoneidad_disponibles(gid)
+            if not fechas_idoneidad:
                 st.info("Sin datos de idoneidad para esta localidad.")
             else:
+                with st.container(width=500, key="idoneidad_centrado"):
+                    key_semana_idoneidad = f"semana_idoneidad_{gid}"
+                    st.select_slider(
+                        "Recorrer semanas", options=fechas_idoneidad,
+                        value=fechas_idoneidad[-1], key=key_semana_idoneidad,
+                        label_visibility="collapsed", format_func=fmt_fecha,
+                    )
                 with st.container(horizontal=True, vertical_alignment="center"):
-                    st.plotly_chart(figura_animada_idoneidad(gid), width=500)
+                    fecha_idoneidad_sel = st.session_state[key_semana_idoneidad]
+                    st.plotly_chart(
+                        figura_estatica_idoneidad(gid, fecha_idoneidad_sel), width=500,
+                    )
                     etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
                     st.markdown(
                         caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
@@ -1318,7 +1274,8 @@ with tab_panel:
                                 unsafe_allow_html=True,
                             )
             with col_v4:
-                if not vegetacion_disponible(gid):
+                disponibles_veg = vegetacion_disponible(gid)
+                if not disponibles_veg:
                     st.markdown("**Vegetación**")
                     st.info("Sin datos de vegetación para esta localidad.")
                 else:
@@ -1328,7 +1285,17 @@ with tab_panel:
                             'margin-bottom:2px;">Vegetación</div>',
                             unsafe_allow_html=True,
                         )
-                        st.plotly_chart(figura_animada_vegetacion(gid), width=230)
+                        fechas_veg = sorted(disponibles_veg.keys())
+                        key_semana_veg = f"semana_vegetacion_{gid}"
+                        st.select_slider(
+                            "Recorrer semanas", options=fechas_veg,
+                            value=fechas_veg[-1], key=key_semana_veg,
+                            label_visibility="collapsed", format_func=fmt_fecha,
+                        )
+                        fecha_veg_sel = st.session_state[key_semana_veg]
+                        st.plotly_chart(
+                            figura_estatica_vegetacion(gid, fecha_veg_sel), width=230,
+                        )
                         st.markdown(
                             caja_leyenda_html(
                                 "Vegetación", PALETA_VIRIDIS5, CATEGORIAS_NDVI,
