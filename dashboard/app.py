@@ -912,12 +912,19 @@ st.markdown(
            query "print". */
         details:not([open]) > *:not(summary) { display: block !important; }
         [data-testid="stExpanderDetails"] { display: block !important; height: auto !important; }
+        /* stExpander NO entra en esta lista a proposito: el expander de
+           idoneidad+variables mide varias hojas completas (5 mapas), asi
+           que pedirle que evite cortarse es una condicion imposible de
+           cumplir. Chrome, al no poder cumplirla, empuja el bloque entero
+           a la pagina siguiente y deja la anterior casi en blanco --
+           bloqueado a que cada mapa individual (stVerticalBlock /
+           stHorizontalBlock / stElementContainer) no se corte alcanza y
+           deja que el expander como un todo se parta entre esos mapas. */
         div[data-testid="stElementContainer"],
         div[data-testid="stHorizontalBlock"],
         div[data-testid="stVerticalBlock"],
         div[data-testid="stCustomComponentV1"],
-        div[data-testid="stPlotlyChart"],
-        div[data-testid="stExpander"] {
+        div[data-testid="stPlotlyChart"] {
             break-inside: avoid;
             /* Chrome respeta page-break-inside mas consistente que
                break-inside en su motor de impresion -- sin esto el primer
