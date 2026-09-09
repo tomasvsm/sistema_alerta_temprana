@@ -742,7 +742,11 @@ def figura_estatica_vegetacion(gid: str, fecha: str) -> go.Figure:
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        height=420, margin=dict(t=10, b=10, l=10, r=10), coloraxis_showscale=False,
+        # aspect="equal" fuerza el raster (cuadrado) a ocupar un cuadrado
+        # centrado dentro del lienzo -- height tiene que quedar parecido
+        # al width (230, ver st.plotly_chart) para que el cuadrado llene
+        # el lienzo en vez de dejar franjas en blanco arriba/abajo.
+        height=230, margin=dict(t=10, b=10, l=10, r=10), coloraxis_showscale=False,
     )
     return fig
 
@@ -779,13 +783,11 @@ def figura_estatica_idoneidad(gid: str, fecha: str) -> go.Figure:
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     fig.update_layout(
-        # aspect="equal" fuerza el raster (cuadrado) a ocupar un
-        # cuadrado centrado dentro del lienzo -- si height queda muy
-        # chico respecto al width (500), ese cuadrado termina chiquito y
-        # perdido, con la barra de tiempo (que si ocupa el ancho
-        # completo) pareciendo enorme al lado. height=590 le da lugar al
-        # cuadrado para acercarse a los 500 de ancho.
-        height=590, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
+        # aspect="equal" fuerza el raster (cuadrado) a ocupar un cuadrado
+        # centrado dentro del lienzo -- height tiene que quedar parecido
+        # al width (500, ver st.plotly_chart) para que el cuadrado llene
+        # el lienzo en vez de dejar franjas en blanco arriba/abajo.
+        height=500, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
     )
     return fig
 
