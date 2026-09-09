@@ -1233,15 +1233,15 @@ with tab_panel:
                         value=fechas_idoneidad[-1], key=key_semana_idoneidad,
                         label_visibility="collapsed", format_func=fmt_fecha,
                     )
-                with st.container(horizontal=True, vertical_alignment="center"):
-                    fecha_idoneidad_sel = st.session_state[key_semana_idoneidad]
-                    st.plotly_chart(
-                        figura_estatica_idoneidad(gid, fecha_idoneidad_sel), width=500,
-                    )
-                    etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
-                    st.markdown(
-                        caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
-                        unsafe_allow_html=True,
+                    with st.container(horizontal=True, vertical_alignment="center"):
+                        fecha_idoneidad_sel = st.session_state[key_semana_idoneidad]
+                        st.plotly_chart(
+                            figura_estatica_idoneidad(gid, fecha_idoneidad_sel), width=500,
+                        )
+                        etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
+                        st.markdown(
+                            caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
+                            unsafe_allow_html=True,
                     )
 
             st.divider()
