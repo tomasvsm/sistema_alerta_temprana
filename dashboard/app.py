@@ -914,6 +914,7 @@ st.markdown(
         [data-testid="stExpanderDetails"] { display: block !important; height: auto !important; }
         div[data-testid="stElementContainer"],
         div[data-testid="stHorizontalBlock"],
+        div[data-testid="stVerticalBlock"],
         div[data-testid="stCustomComponentV1"],
         div[data-testid="stPlotlyChart"],
         div[data-testid="stExpander"] {
