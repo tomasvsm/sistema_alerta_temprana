@@ -448,9 +448,9 @@ def mostrar_pie_pagina(key: str) -> None:
     dispares. `key` distingue la instancia de cada pestaña -- las dos
     corren en el mismo script run (Streamlit no descarta el contenido de
     la pestaña inactiva) y un key repetido tira StreamlitDuplicateElementKey."""
-    alto_logo = 42
+    alto_logo = 60
     with st.container(horizontal=True, vertical_alignment="center", key=f"pie_logos_{key}"):
-        st.image(str(LOGOS_DIR / "conicet.png"), width=round(alto_logo * 1181 / 677))
+        st.image(str(LOGOS_DIR / "conicet.png"), width=round(alto_logo * 794 / 439))
         st.image(str(LOGOS_DIR / "gulich.png"), width=round(alto_logo * 2667 / 405))
     st.markdown(footer_html(), unsafe_allow_html=True)
 
@@ -959,29 +959,66 @@ st.markdown(
     div[role="tablist"] { padding-left: 164px; }
     div[data-testid="stHeading"] h1 { font-size: 2rem; padding: 0.3rem 0 0.5rem; }
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
-    /* flex-start + margen fijo (no center): centrado en su propia columna
-       (938px) dejaba 164px libres de cada lado del mapa (610px), y esos
-       164px de la derecha se sumaban al espacio entre esta columna y la
-       de oviposicion. Con flex-start + el mismo margen de 164px que usan
-       selectores/tabs, el mapa keeps su margen izquierdo pero no le
-       agrega padding extra a la derecha. */
-    div[data-testid="stLayoutWrapper"]:has(> .st-key-mapa_centrado) { align-self: flex-start; margin-left: 164px; }
-    /* Mismo margen izquierdo (164px) que el resto, mas un margen derecho
-       igual para impresion (paginas simetricas): estos bloques (Acerca
-       de completo, y los expanders del panel) no tenian ningun margen,
-       a diferencia del mapa/oviposicion/selectores. */
-    div[data-testid="stTabPanel"]:last-of-type {
-        padding-left: 164px; padding-right: 164px;
-    }
-    /* width explicito (no margin-right): estos elementos ya vienen con
-       width:100% fijo desde Streamlit, asi que un margin-right nomas los
-       empuja a desbordar el borde derecho de la pagina en vez de
-       achicarlos. */
-    .st-key-exp_serie_temporal, .st-key-exp_idoneidad_variables,
-    .st-key-exp_datos_meteorologicos {
-        margin-left: 164px; width: calc(100% - 328px) !important;
-    }
+    /* Centrado (no flex-start+margin fijo): con la columna al 60% (ver
+       col_mapa mas abajo) esto ya cae en el mismo margen izquierdo que
+       selectores/tabs (164px) por las cuentas -- pero ademas, a
+       diferencia de un margen fijo, se ajusta solo al ancho real de la
+       columna en cada contexto (pantalla ancha o la hoja angosta de
+       @media print), en vez de asumir un ancho de pantalla especifico y
+       desbordar cuando ese ancho no esta disponible (probado: con
+       flex-start+margin fijo el mapa se salia de su columna y se
+       superponia con oviposicion al imprimir, porque @media print achica
+       .block-container a 1050px pero el margen fijo no se achica con
+       el). */
+    div[data-testid="stLayoutWrapper"]:has(> .st-key-mapa_centrado) { align-self: center; }
     div[data-testid="stLayoutWrapper"]:has([class*="st-key-var_"]) { align-self: center; }
+    /* Todo el bloque de "mismo margen izquierdo/derecho" (164px) de aca
+       abajo es SOLO para pantalla. @media print ya achica .block-container
+       a 1050px por su cuenta (ver el otro @media print, mas abajo) para
+       entrar en una hoja A4 -- restarle encima otros 328px (164 de cada
+       lado) a expanders que adentro tienen graficos de Plotly con ancho
+       FIJO en pixeles (950px la serie temporal, 960px meteorologicos) los
+       hace desbordar ese espacio ya angosto y superponerse con lo de al
+       lado (probado, es el mismo problema que ya paso una vez con el
+       mapa). Con @media screen ninguna de estas reglas toca la impresion,
+       que sigue usando el layout ancho de pantalla completo como antes de
+       esta tanda de cambios. */
+    @media screen {
+        /* Mismo margen izquierdo (164px) que el resto, mas un margen
+           derecho igual (paginas simetricas): estos bloques (Acerca de
+           completo, y los expanders del panel) no tenian ningun margen,
+           a diferencia del mapa/oviposicion/selectores. */
+        div[data-testid="stTabPanel"]:last-of-type {
+            padding-left: 164px; padding-right: 164px;
+        }
+        /* width explicito (no margin-right): estos elementos ya vienen
+           con width:100% fijo desde Streamlit, asi que un margin-right
+           nomas los empuja a desbordar el borde derecho de la pagina en
+           vez de achicarlos. */
+        .st-key-exp_serie_temporal, .st-key-exp_datos_meteorologicos {
+            margin-left: 164px; width: calc(100% - 328px) !important;
+        }
+        /* exp_idoneidad_variables aparte: CERRADO se comporta como los
+           otros dos (necesita margin-left:164px para arrancar en x=244),
+           pero ABIERTO (contenido real: 4 mapas folium + plots) algo no
+           identificado ya lo corre 164px por su cuenta, y sumarle otros
+           164px lo pasaba a 326px (val real +164 en vez de +328, causa no
+           encontrada). Con :has(details[open]) se corrige margin-left a 0
+           especificamente cuando esta abierto, sin tocar el Python (que
+           shiftear indentado de las 3 expanders para envolverlas en un
+           container comun era un cambio mucho mas grande y riesgoso).
+           Verificado con getBoundingClientRect en vivo, abierto y
+           cerrado. */
+        .st-key-exp_idoneidad_variables {
+            margin-left: 164px; width: calc(100% - 328px) !important;
+            /* Streamlit le pone "transition: all" a este wrapper -- sin
+               esto, el salto de margin-left (164px a 0) al abrirlo se ve
+               como un deslizamiento/estirón en cámara lenta en vez de
+               acomodarse en el momento. */
+            transition: none !important;
+        }
+        .st-key-exp_idoneidad_variables:has(details[open]) { margin-left: 0; }
+    }
     [class*="st-key-pie_logos_"] { justify-content: center; gap: 28px; margin-bottom: 4px; }
     /* st.image agrega de forma automatica un boton de pantalla completa
        al pasar el mouse -- no hace falta para un logo institucional, y en
@@ -997,8 +1034,12 @@ st.markdown(
        de columna). ">" (hijo directo) en el :has() porque ":has(.st-key-
        semaforo_centrado)" sin eso tambien matcheaba el stLayoutWrapper
        de toda la fila (un ancestro mas arriba que tambien la contiene
-       como descendiente), duplicando el margen (209px x2 = 418px). */
-    div[data-testid="stLayoutWrapper"]:has(> .st-key-semaforo_centrado) { align-self: flex-start; margin-left: 209px; }
+       como descendiente), duplicando el margen (209px x2 = 418px). Solo
+       en pantalla (@media screen): el valor fijo de 209px asume el ancho
+       de columna de pantalla completa, no el achicado de @media print. */
+    @media screen {
+        div[data-testid="stLayoutWrapper"]:has(> .st-key-semaforo_centrado) { align-self: flex-start; margin-left: 209px; }
+    }
     /* El grafico del semaforo (go.Pie en dona) dibuja puertas adentro un
        circulo completo aunque solo se vea la mitad de arriba -- la mitad
        de abajo es transparente pero sigue ocupando 170px reales en el
@@ -1207,11 +1248,13 @@ with tab_panel:
                 config={"displayModeBar": False},
             )
 
-    # Antes [3, 2]: con el mapa (610px) alineado a la izquierda (no
-    # centrado) de su columna, una columna tan ancha dejaba ~164px libres
-    # de sobra a la derecha del mapa antes de llegar a oviposicion. 49/51
-    # le da a col_mapa solo lo que el mapa mas su margen necesitan.
-    col_mapa, col_ovip = st.columns([49, 51])
+    # [49, 51] (probado, revertido): angostaba col_mapa para achicar el
+    # espacio a la derecha del mapa en pantalla, pero @media print achica
+    # .block-container a 1050px para entrar en una hoja A4 -- con esa
+    # proporcion, la columna quedaba mas angosta que el mapa (610px fijos)
+    # y lo superponia con oviposicion al imprimir. [3, 2] es el ancho
+    # minimo verificado para que el mapa entre en la hoja impresa.
+    col_mapa, col_ovip = st.columns([3, 2])
 
     with col_mapa:
         # Titulo, barra de tiempo y mapa comparten el mismo ancho fijo del
@@ -1288,10 +1331,10 @@ with tab_panel:
 
             st_folium(m, height=460, width=610, returned_objects=[])
 
-        st.caption(
-            f"Umbral de Youden de esta localidad: {YOUDEN[gid]:.4f} "
-            "(calibrado contra datos de ovitrampas)."
-        )
+            st.caption(
+                f"Umbral de Youden de esta localidad: {YOUDEN[gid]:.4f} "
+                "(calibrado contra datos de ovitrampas)."
+            )
 
     with col_ovip:
         df_ovip = cargar_indice_oviposicion(gid)
