@@ -945,7 +945,17 @@ st.markdown(
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
     div[data-testid="stLayoutWrapper"]:has(.st-key-mapa_centrado) { align-self: center; }
     div[data-testid="stLayoutWrapper"]:has([class*="st-key-var_"]) { align-self: center; }
-    div[data-testid="stLayoutWrapper"]:has(.st-key-semaforo_centrado) { align-self: center; }
+    /* flex-start (no center) porque el ancho de columna del semaforo es
+       mayor al del grafico de indice de oviposicion -- centrarlo en su
+       propia columna lo corria hacia el borde derecho de la pagina, mas
+       alla de donde termina oviposicion. El margen fijo corre la caja de
+       300px para que su centro coincida con el centro real del grafico
+       de oviposicion (medido con getBoundingClientRect, no con el ancho
+       de columna). ">" (hijo directo) en el :has() porque ":has(.st-key-
+       semaforo_centrado)" sin eso tambien matcheaba el stLayoutWrapper
+       de toda la fila (un ancestro mas arriba que tambien la contiene
+       como descendiente), duplicando el margen (209px x2 = 418px). */
+    div[data-testid="stLayoutWrapper"]:has(> .st-key-semaforo_centrado) { align-self: flex-start; margin-left: 209px; }
     /* El grafico del semaforo (go.Pie en dona) dibuja puertas adentro un
        circulo completo aunque solo se vea la mitad de arriba -- la mitad
        de abajo es transparente pero sigue ocupando 170px reales en el
