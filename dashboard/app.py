@@ -937,11 +937,23 @@ st.markdown(
     div[data-testid="stAppDeployButton"] { display: none; }
     .block-container { padding-top: 0.8rem; }
     div[data-testid="stHeading"]:has(h1) { text-align: center; }
+    /* Panel/Acerca de arranca en el borde de la pagina por defecto; se
+       corre al mismo margen izquierdo que el mapa de abajo (mapa_centrado,
+       610px centrado dentro de una columna mas ancha), asi coinciden. */
+    div[role="tablist"] { padding-left: 164px; }
     div[data-testid="stHeading"] h1 { font-size: 2rem; padding: 0.3rem 0 0.5rem; }
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
     div[data-testid="stLayoutWrapper"]:has(.st-key-mapa_centrado) { align-self: center; }
     div[data-testid="stLayoutWrapper"]:has([class*="st-key-var_"]) { align-self: center; }
     div[data-testid="stLayoutWrapper"]:has(.st-key-semaforo_centrado) { align-self: center; }
+    /* El grafico del semaforo (go.Pie en dona) dibuja puertas adentro un
+       circulo completo aunque solo se vea la mitad de arriba -- la mitad
+       de abajo es transparente pero sigue ocupando 170px reales en el
+       layout, estirando toda la fila de selectores/semaforo y corriendo
+       todo lo de abajo. Se recorta el CONTENEDOR EXTERIOR (no el propio
+       grafico, que dispara su propio resize si se lo achica a el) para
+       no arrastrar ese espacio muerto al resto de la pagina. */
+    .st-key-semaforo_centrado { max-height: 130px; overflow: hidden; }
 
     /* Reporte imprimible: la app no esta pensada para pantallas angostas,
        asi que sin esto el navegador imprime el layout ancho de pantalla
@@ -1077,7 +1089,11 @@ st.title("Sistema de alerta temprana de actividad de *Aedes aegypti*")
 tab_panel, tab_acerca = st.tabs(["Panel", "Acerca de"])
 
 with tab_panel:
-    col_sel_loc, col_sel_sem, col_semaforo = st.columns([2, 2, 5])
+    # Columna vacia a la izquierda para que Localidad/Semana arranquen en
+    # el mismo margen izquierdo que el mapa de abajo (el contenedor
+    # mapa_centrado, de 610px, queda centrado dentro de una columna mas
+    # ancha y no arranca en el borde de la pagina).
+    col_spacer_sel, col_sel_loc, col_sel_sem, col_semaforo = st.columns([1, 2, 2, 5])
     with col_sel_loc:
         gid = st.selectbox(
             "Localidad", options=list(GID_NOMBRE), format_func=lambda g: GID_NOMBRE[g],
@@ -1129,9 +1145,8 @@ with tab_panel:
     with col_semaforo:
         with st.container(width=300, key="semaforo_centrado"):
             st.markdown(
-                '<div style="max-width:300px; margin:0 auto; text-align:center; '
-                'font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
-                'opacity:0.65;">Nivel de actividad de esta semana</div>',
+                '<div style="text-align:center;"><strong>Nivel de actividad de '
+                "esta semana</strong></div>",
                 unsafe_allow_html=True,
             )
             st.plotly_chart(
