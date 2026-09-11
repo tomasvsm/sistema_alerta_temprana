@@ -125,18 +125,20 @@ def bounds_categoricos(gid: str) -> list[float]:
     return [0.0, YOUDEN[gid], q33, q66, 1.0]
 
 
-def codigo_categoria_maxima(gid: str, arr: np.ndarray) -> int:
+def codigo_y_valor_categoria_maxima(gid: str, arr: np.ndarray) -> tuple[int, float]:
     """Categoria MAS ALTA presente entre los pixeles validos de esta
-    semana (-1 si no hay datos), no la mas frecuente: un solo pixel en una
-    categoria superior ya sube el semaforo a ese nivel. Criterio de
-    alerta temprana -- mas sensible que el promedio/moda, que casi
-    siempre daria "baja" porque la mayoria del area esta genuinamente
-    baja la mayor parte del tiempo (ver hallazgo del 2026-09-01)."""
+    semana (-1, nan si no hay datos) y el valor Rw de ese pixel, no la mas
+    frecuente: un solo pixel en una categoria superior ya sube el
+    semaforo a ese nivel. Criterio de alerta temprana -- mas sensible que
+    el promedio/moda, que casi siempre daria "baja" porque la mayoria del
+    area esta genuinamente baja la mayor parte del tiempo (ver hallazgo
+    del 2026-09-01)."""
     validos = arr[~np.isnan(arr)]
     if validos.size == 0:
-        return -1
-    codigos = np.digitize(validos, bounds_categoricos(gid)[1:-1])
-    return int(codigos.max())
+        return -1, float("nan")
+    valor_max = float(validos.max())
+    codigo = int(np.digitize([valor_max], bounds_categoricos(gid)[1:-1])[0])
+    return codigo, valor_max
 
 
 def _texto_legible_sobre(color_hex: str) -> str:
@@ -437,53 +439,80 @@ def footer_html() -> str:
     )
 
 
-def semaforo_html(codigo_activo: int) -> str:
-    """Recuadro propio con titulo y las 4 categorias siempre visibles (la
-    silueta completa, con relleno translucido del color propio para que se
-    entienda que forman un conjunto), resaltando solo la que corresponde a
-    la semana seleccionada -- como un semaforo real, no un solo pill de
-    texto. Grilla 2x2 (no una fila de 4) para poder vivir angosto, en el
-    espacio libre junto a los selectores de localidad/semana."""
-    pills = []
+def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> go.Figure:
+    """Reemplazo del semaforo de 4 cajas: un velocimetro con aguja (sugerido
+    por los directores de tesis), armado con go.Pie en dona (go.Indicator
+    no tiene una aguja de verdad, solo una marca radial fina) siguiendo el
+    patron: mitad inferior oculta + mitad superior con los 4 segmentos +
+    figuras de forma "line"/"circle" para la aguja y el pivote.
+
+    Los 4 segmentos se dibujan del MISMO ancho visual (no proporcional al
+    ancho real en Rw de cada categoria) -- con los anchos reales, "muy
+    alta" ocupa mas de medio semicirculo y el resto queda comprimido,
+    ilegible. La aguja sigue reflejando el valor real: se reescala la
+    posicion del valor DENTRO de su categoria (Youden y los 2 terciles de
+    bounds_categoricos, la misma calibracion de siempre) al cuarto de
+    circulo parejo que le toca a esa categoria."""
+    bounds = bounds_categoricos(gid)
+    if codigo_activo < 0 or np.isnan(valor_activo):
+        codigo_activo, valor_activo = 0, 0.0
+
+    n = 4
+    b_ini, b_fin = bounds[codigo_activo], bounds[codigo_activo + 1]
+    frac_en_categoria = 0.0 if b_fin == b_ini else (valor_activo - b_ini) / (b_fin - b_ini)
+    frac_en_categoria = min(max(frac_en_categoria, 0.0), 1.0)
+    fraccion_total = (codigo_activo + frac_en_categoria) / n
+
+    # hand_angle: pi (izquierda, fraccion=0) -> 0 (derecha, fraccion=1),
+    # recorriendo el semicirculo superior en sentido horario.
+    hand_angle = np.pi * (1 - fraccion_total)
+    largo_aguja = 0.42
+
     etiquetas = [c.replace("Actividad ", "") for c in CATEGORIAS]
-    for i, (color, etiqueta) in enumerate(zip(PALETA, etiquetas)):
-        if i == codigo_activo:
-            texto = _texto_legible_sobre(color)
-            estilo = (
-                f"background:{color}; color:{texto}; font-weight:700; "
-                f"box-shadow:0 1px 4px rgba(0,0,0,0.35);"
-            )
-        else:
-            # Texto siempre en un gris neutro (no en el color de la
-            # categoria): un color palido como texto sobre fondo blanco
-            # es tan ilegible como texto blanco sobre ese mismo color.
-            estilo = (
-                f"background:{_hex_con_alpha(color, 0.035)}; color:rgba(107,107,107,0.55); "
-                f"font-weight:500; border:1.5px solid {_hex_con_alpha(color, 0.18)};"
-            )
-        pills.append(
-            f'<div style="{estilo} text-align:center; padding:6px 4px; '
-            f'border-radius:8px; font-size:0.82rem;">{etiqueta}</div>'
-        )
-    filas = "".join(pills)
-    return (
-        '<div style="border:1px solid rgba(128,128,128,0.35); border-radius:10px; '
-        'padding:8px 12px 10px 12px; margin:0 0 6px 0;">'
-        '<div style="font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
-        'opacity:0.65; margin-bottom:6px; display:flex; align-items:center; gap:5px;">'
-        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" '
-        'style="flex-shrink:0;">'
-        '<rect x="7" y="1" width="10" height="22" rx="4" stroke="currentColor" '
-        'stroke-width="1.6"/>'
-        '<circle cx="12" cy="6.5" r="2" fill="#d7191c"/>'
-        '<circle cx="12" cy="12" r="2" fill="#e0c23a"/>'
-        '<circle cx="12" cy="17.5" r="2" fill="#2b9e4a"/>'
-        '</svg>'
-        "Nivel de actividad de esta semana</div>"
-        '<div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">'
-        f"{filas}</div>"
-        "</div>"
+    colores_texto = [_texto_legible_sobre(c) for c in PALETA]
+    fig = go.Figure(
+        data=[go.Pie(
+            values=[0.5] + [0.5 / n] * n,
+            rotation=90,
+            hole=0.55,
+            direction="clockwise",
+            sort=False,
+            marker=dict(colors=["rgba(0,0,0,0)"] + PALETA, line=dict(width=0)),
+            text=[""] + [f"<b>{e}</b>" for e in etiquetas],
+            textinfo="text",
+            textfont=dict(color=["rgba(0,0,0,0)"] + colores_texto, size=12),
+            hoverinfo="skip",
+        )],
+        layout=go.Layout(
+            showlegend=False,
+            margin=dict(t=28, b=0, l=10, r=10),
+            height=170,
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            annotations=[go.layout.Annotation(
+                text="NIVEL DE ACTIVIDAD DE ESTA SEMANA",
+                font=dict(size=11.5, color="rgba(49,51,63,0.65)"),
+                x=0.5, xanchor="center", xref="paper",
+                y=1.12, yanchor="bottom", yref="paper",
+                showarrow=False,
+            )],
+            shapes=[
+                go.layout.Shape(
+                    type="line", xref="paper", yref="paper",
+                    x0=0.5, y0=0.5,
+                    x1=0.5 + largo_aguja * np.cos(hand_angle),
+                    y1=0.5 + largo_aguja * np.sin(hand_angle),
+                    line=dict(color="#1a1a1a", width=4),
+                ),
+                go.layout.Shape(
+                    type="circle", xref="paper", yref="paper",
+                    x0=0.47, x1=0.53, y0=0.47, y1=0.53,
+                    fillcolor="#1a1a1a", line_color="#1a1a1a",
+                ),
+            ],
+        ),
     )
+    return fig
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -896,10 +925,11 @@ st.markdown(
     div[data-testid="stAppDeployButton"] { display: none; }
     .block-container { padding-top: 0.8rem; }
     div[data-testid="stHeading"]:has(h1) { text-align: center; }
-    div[data-testid="stHeading"] h1 { font-size: 2rem; }
+    div[data-testid="stHeading"] h1 { font-size: 2rem; padding: 0.3rem 0 0.5rem; }
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
     div[data-testid="stLayoutWrapper"]:has(.st-key-mapa_centrado) { align-self: center; }
     div[data-testid="stLayoutWrapper"]:has([class*="st-key-var_"]) { align-self: center; }
+    div[data-testid="stLayoutWrapper"]:has(.st-key-semaforo_centrado) { align-self: center; }
 
     /* Reporte imprimible: la app no esta pensada para pantallas angostas,
        asi que sin esto el navegador imprime el layout ancho de pantalla
@@ -1082,10 +1112,11 @@ with tab_panel:
     # (distinto shape/transform), y podian discrepar levemente en
     # pixeles del borde del ejido si se mezclaban las dos fuentes.
     arr_ia_nativo = cargar_raster_nativo(str(ia_path), gid=gid)
-    codigo_activo = codigo_categoria_maxima(gid, arr_ia_nativo)
+    codigo_activo, valor_activo = codigo_y_valor_categoria_maxima(gid, arr_ia_nativo)
 
     with col_semaforo:
-        st.markdown(semaforo_html(codigo_activo), unsafe_allow_html=True)
+        with st.container(width=300, key="semaforo_centrado"):
+            st.plotly_chart(figura_semaforo_gauge(gid, codigo_activo, valor_activo), width=300)
 
     col_mapa, col_ovip = st.columns([3, 2])
 
