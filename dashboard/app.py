@@ -69,7 +69,15 @@ GID_SNAKE = {
 # un refresh del dataset de campo el 2026-08-05 y nunca se propago a
 # produccion (bug real, confirmado comparando contra el notebook y sus
 # backups previos al refresh).
-YOUDEN = {"1252": 0.1945, "1271": 0.0829, "1300": 0.3736, "1385": 0.2360}
+# Cordoba corregida a 0.1632 el 2026-09-11 (antes 0.2360): se confirmo con
+# los directores que el ciclo 2019-2020 (jun-dic 2019, temporada truncada)
+# tuvo diferencias metodologicas reales en la toma de datos de ovitrampas,
+# no solo el problema estadistico de evaluar una temporada incompleta. Se
+# excluyo ese tramo del calculo -- ver
+# validacion/cruce/analisis_correlacion_final.ipynb (notebook final, la
+# original analisis_correlacion.ipynb queda como registro del diagnostico
+# que llevo a la exclusion).
+YOUDEN = {"1252": 0.1945, "1271": 0.0829, "1300": 0.3736, "1385": 0.1632}
 
 # Cortes de las categorias "media" y "alta": terciles del Rw real de las
 # ovitrampas de esa localidad que superan su propio umbral de Youden
@@ -82,7 +90,7 @@ TERCILES_CAMPO = {
     "1252": (0.296, 0.556),
     "1271": (0.264, 0.626),
     "1300": (0.410, 0.619),
-    "1385": (0.359, 0.494),
+    "1385": (0.336, 0.475),
 }
 PALETA = ["#2b83ba", "#83c1ab", "#e0f3b5", "#d7191c"]
 CATEGORIAS = ["Actividad baja", "Actividad media", "Actividad alta", "Actividad muy alta"]
