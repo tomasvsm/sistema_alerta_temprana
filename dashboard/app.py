@@ -46,6 +46,7 @@ VEGETACION_DIR = REPO_ROOT / "espacializacion" / "data" / "vegetacion"
 MCDA_DIR = REPO_ROOT / "espacializacion" / "output" / "MCDA"
 EJIDOS_PATH = REPO_ROOT / "espacializacion" / "resources" / "ejidos" / "ejidos_4loc.geojson"
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+LOGOS_DIR = ASSETS_DIR / "logos"
 
 # Cordoba primero -- es la localidad default al abrir (selectbox sin index
 # explicito toma la primera opcion del dict).
@@ -437,6 +438,21 @@ def footer_html() -> str:
         "<span>Tomás V. San Miguel · Hecho con Streamlit</span>"
         "</div>"
     )
+
+
+def mostrar_pie_pagina(key: str) -> None:
+    """Logos institucionales (con fondo transparente) junto al link de
+    Github y la autoria, al final de cada pestaña. Alto fijo e igual para
+    los dos -- son de proporciones muy distintas (el de Gulich es un
+    banner ancho y bajo) y con el mismo width= quedarian de tamaños
+    dispares. `key` distingue la instancia de cada pestaña -- las dos
+    corren en el mismo script run (Streamlit no descarta el contenido de
+    la pestaña inactiva) y un key repetido tira StreamlitDuplicateElementKey."""
+    alto_logo = 42
+    with st.container(horizontal=True, vertical_alignment="center", key=f"pie_logos_{key}"):
+        st.image(str(LOGOS_DIR / "conicet.png"), width=round(alto_logo * 1181 / 677))
+        st.image(str(LOGOS_DIR / "gulich.png"), width=round(alto_logo * 2667 / 405))
+    st.markdown(footer_html(), unsafe_allow_html=True)
 
 
 def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> go.Figure:
@@ -943,8 +959,35 @@ st.markdown(
     div[role="tablist"] { padding-left: 164px; }
     div[data-testid="stHeading"] h1 { font-size: 2rem; padding: 0.3rem 0 0.5rem; }
     div[data-testid="stSlider"] { margin: -10px 0 -8px 0; }
-    div[data-testid="stLayoutWrapper"]:has(.st-key-mapa_centrado) { align-self: center; }
+    /* flex-start + margen fijo (no center): centrado en su propia columna
+       (938px) dejaba 164px libres de cada lado del mapa (610px), y esos
+       164px de la derecha se sumaban al espacio entre esta columna y la
+       de oviposicion. Con flex-start + el mismo margen de 164px que usan
+       selectores/tabs, el mapa keeps su margen izquierdo pero no le
+       agrega padding extra a la derecha. */
+    div[data-testid="stLayoutWrapper"]:has(> .st-key-mapa_centrado) { align-self: flex-start; margin-left: 164px; }
+    /* Mismo margen izquierdo (164px) que el resto, mas un margen derecho
+       igual para impresion (paginas simetricas): estos bloques (Acerca
+       de completo, y los expanders del panel) no tenian ningun margen,
+       a diferencia del mapa/oviposicion/selectores. */
+    div[data-testid="stTabPanel"]:last-of-type {
+        padding-left: 164px; padding-right: 164px;
+    }
+    /* width explicito (no margin-right): estos elementos ya vienen con
+       width:100% fijo desde Streamlit, asi que un margin-right nomas los
+       empuja a desbordar el borde derecho de la pagina en vez de
+       achicarlos. */
+    .st-key-exp_serie_temporal, .st-key-exp_idoneidad_variables,
+    .st-key-exp_datos_meteorologicos {
+        margin-left: 164px; width: calc(100% - 328px) !important;
+    }
     div[data-testid="stLayoutWrapper"]:has([class*="st-key-var_"]) { align-self: center; }
+    [class*="st-key-pie_logos_"] { justify-content: center; gap: 28px; margin-bottom: 4px; }
+    /* st.image agrega de forma automatica un boton de pantalla completa
+       al pasar el mouse -- no hace falta para un logo institucional, y en
+       el de Conicet (con "CONICET" escrito arriba del todo) el recuadro
+       del boton le queda encima del texto. */
+    [class*="st-key-pie_logos_"] [data-testid="stElementToolbar"] { display: none !important; }
     /* flex-start (no center) porque el ancho de columna del semaforo es
        mayor al del grafico de indice de oviposicion -- centrarlo en su
        propia columna lo corria hacia el borde derecho de la pagina, mas
@@ -1164,7 +1207,11 @@ with tab_panel:
                 config={"displayModeBar": False},
             )
 
-    col_mapa, col_ovip = st.columns([3, 2])
+    # Antes [3, 2]: con el mapa (610px) alineado a la izquierda (no
+    # centrado) de su columna, una columna tan ancha dejaba ~164px libres
+    # de sobra a la derecha del mapa antes de llegar a oviposicion. 49/51
+    # le da a col_mapa solo lo que el mapa mas su margen necesitan.
+    col_mapa, col_ovip = st.columns([49, 51])
 
     with col_mapa:
         # Titulo, barra de tiempo y mapa comparten el mismo ancho fijo del
@@ -1452,7 +1499,7 @@ with tab_panel:
                 st.plotly_chart(fig_met, width=960)
 
     st.divider()
-    st.markdown(footer_html(), unsafe_allow_html=True)
+    mostrar_pie_pagina("panel")
 
 with tab_acerca:
     st.header("Acerca de este sistema")
@@ -1611,4 +1658,4 @@ desactualizado.
         """
     )
     st.divider()
-    st.markdown(footer_html(), unsafe_allow_html=True)
+    mostrar_pie_pagina("acerca")
