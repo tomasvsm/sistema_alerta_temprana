@@ -480,7 +480,7 @@ def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> 
     FIG_W, FIG_H = 300, 170
     MARGEN_T, MARGEN_B, MARGEN_L, MARGEN_R = 5, 0, 10, 10
     radio_circulo_px = min(FIG_W - MARGEN_L - MARGEN_R, FIG_H - MARGEN_T - MARGEN_B) / 2
-    largo_aguja_px = radio_circulo_px * 0.85
+    largo_aguja_px = radio_circulo_px * 0.65
     radio_pivote_px = 6
     dx_aguja, dy_aguja = largo_aguja_px / FIG_W, largo_aguja_px / FIG_H
     dx_piv, dy_piv = radio_pivote_px / FIG_W, radio_pivote_px / FIG_H
