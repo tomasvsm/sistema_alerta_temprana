@@ -466,7 +466,24 @@ def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> 
     # hand_angle: pi (izquierda, fraccion=0) -> 0 (derecha, fraccion=1),
     # recorriendo el semicirculo superior en sentido horario.
     hand_angle = np.pi * (1 - fraccion_total)
-    largo_aguja = 0.42
+
+    # El Pie SI dibuja un circulo real incluso en una caja mas ancha que
+    # alta (verificado con getBBox: circulo de diametro fijo, no una
+    # elipse) -- no hace falta una caja cuadrada. Lo que si esta mal si
+    # se usa un solo "largo_aguja" para ambos ejes en coordenadas paper
+    # (x0..1 sobre FIG_W, y0..1 sobre FIG_H) es la aguja: la misma
+    # fraccion representa una cantidad de pixeles distinta en cada eje
+    # cuando FIG_W != FIG_H, y la aguja sale con el angulo/largo
+    # incorrecto (la version anterior con largo_aguja=0.42 en ambos ejes
+    # se pasaba ~126px en X contra un radio real de ~82px). Se corrige
+    # pasando de un radio en PIXELES a fracciones de paper por eje.
+    FIG_W, FIG_H = 300, 170
+    MARGEN_T, MARGEN_B, MARGEN_L, MARGEN_R = 5, 0, 10, 10
+    radio_circulo_px = min(FIG_W - MARGEN_L - MARGEN_R, FIG_H - MARGEN_T - MARGEN_B) / 2
+    largo_aguja_px = radio_circulo_px * 0.85
+    radio_pivote_px = 6
+    dx_aguja, dy_aguja = largo_aguja_px / FIG_W, largo_aguja_px / FIG_H
+    dx_piv, dy_piv = radio_pivote_px / FIG_W, radio_pivote_px / FIG_H
 
     etiquetas = [c.replace("Actividad ", "") for c in CATEGORIAS]
     colores_texto = [_texto_legible_sobre(c) for c in PALETA]
@@ -485,28 +502,23 @@ def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> 
         )],
         layout=go.Layout(
             showlegend=False,
-            margin=dict(t=28, b=0, l=10, r=10),
-            height=170,
+            margin=dict(t=MARGEN_T, b=MARGEN_B, l=MARGEN_L, r=MARGEN_R),
+            width=FIG_W,
+            height=FIG_H,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            annotations=[go.layout.Annotation(
-                text="NIVEL DE ACTIVIDAD DE ESTA SEMANA",
-                font=dict(size=11.5, color="rgba(49,51,63,0.65)"),
-                x=0.5, xanchor="center", xref="paper",
-                y=1.12, yanchor="bottom", yref="paper",
-                showarrow=False,
-            )],
             shapes=[
                 go.layout.Shape(
                     type="line", xref="paper", yref="paper",
                     x0=0.5, y0=0.5,
-                    x1=0.5 + largo_aguja * np.cos(hand_angle),
-                    y1=0.5 + largo_aguja * np.sin(hand_angle),
+                    x1=0.5 + dx_aguja * np.cos(hand_angle),
+                    y1=0.5 + dy_aguja * np.sin(hand_angle),
                     line=dict(color="#1a1a1a", width=4),
                 ),
                 go.layout.Shape(
                     type="circle", xref="paper", yref="paper",
-                    x0=0.47, x1=0.53, y0=0.47, y1=0.53,
+                    x0=0.5 - dx_piv, x1=0.5 + dx_piv,
+                    y0=0.5 - dy_piv, y1=0.5 + dy_piv,
                     fillcolor="#1a1a1a", line_color="#1a1a1a",
                 ),
             ],
@@ -1116,7 +1128,16 @@ with tab_panel:
 
     with col_semaforo:
         with st.container(width=300, key="semaforo_centrado"):
-            st.plotly_chart(figura_semaforo_gauge(gid, codigo_activo, valor_activo), width=300)
+            st.markdown(
+                '<div style="max-width:300px; margin:0 auto; text-align:center; '
+                'font-size:0.72rem; text-transform:uppercase; letter-spacing:0.04em; '
+                'opacity:0.65;">Nivel de actividad de esta semana</div>',
+                unsafe_allow_html=True,
+            )
+            st.plotly_chart(
+                figura_semaforo_gauge(gid, codigo_activo, valor_activo), width=300,
+                config={"displayModeBar": False},
+            )
 
     col_mapa, col_ovip = st.columns([3, 2])
 
