@@ -29,6 +29,7 @@ Uso:
 
 import os
 import re
+import sys
 import numpy as np
 import rasterio
 from rasterio.warp import reproject, Resampling
@@ -428,6 +429,14 @@ def main():
     print(f"  Errores:                {total_err}")
     print(f"  Resultados en:          {OUTPUT_DIR}")
 
+    return total_err
+
 
 if __name__ == "__main__":
-    main()
+    # total_err contaba errores pero nunca se devolvia como exit code --
+    # correr_mcda_todas.sh (y run_semanal.sh mas arriba) SI revisan el
+    # exit code para decidir si el paso "mcda" salio ok, asi que sin esto
+    # un error real de procesamiento (no solo "no hay NDVI", que no cuenta
+    # como error aca) quedaba invisible en la notificacion final. Mismo
+    # bug encontrado y corregido 2026-09-16 en run_veg_backfill.sh.
+    sys.exit(1 if main() else 0)

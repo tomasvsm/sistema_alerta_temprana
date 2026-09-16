@@ -183,7 +183,7 @@ def main(fecha_ref=None):
     entries = scan_mcda_files(MCDA_DIR)
     if not entries:
         print("  [ERROR] No se encontraron archivos MCDA en el directorio.")
-        return
+        return 1
     print(f"  Archivos MCDA encontrados: {len(entries)}")
 
     oviposicion_cache = {}
@@ -243,7 +243,15 @@ def main(fecha_ref=None):
     print(f"  Errores:             {n_err}")
     print(f"  TIFFs en:            {OUTPUT_DIR}")
 
+    return n_err
+
 
 if __name__ == "__main__":
+    # n_err contaba errores pero nunca se devolvia como exit code -- el
+    # docker run de este paso en run_semanal.sh SI revisa el exit code
+    # para decidir si "indice_actividad" salio ok, asi que sin esto un
+    # error real de procesamiento quedaba invisible en la notificacion
+    # final. Mismo bug encontrado y corregido 2026-09-16 en
+    # run_veg_backfill.sh y calculo_mcda.py.
     fecha_ref = sys.argv[1] if len(sys.argv) > 1 else None
-    main(fecha_ref)
+    sys.exit(1 if main(fecha_ref) else 0)

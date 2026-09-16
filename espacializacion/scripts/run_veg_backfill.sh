@@ -14,6 +14,21 @@ GRASS_MAPSET="/grassdata/posgar2007_4_cba/MCDA"
 LOGDIR="/home/tomas/sistema_alerta_temprana/espacializacion/scripts/veg_backfill_logs"
 mkdir -p "$LOGDIR"
 
+# Un .gislock huerfano bloquea TODAS las corridas de GRASS hasta que alguien
+# lo note y lo borre a mano -- paso real 2026-09-16, encontrado recien tras
+# DOS semanas de fallos silenciosos (el .gislock quedo de una corrida del
+# 2026-09-09 que se colgo o fue matada sin que GRASS alcanzara a liberarlo).
+# El unico proceso que toca este mapset es el "docker run ... vegetacion:test"
+# de mas abajo, siempre desde este mismo script -- si al arrancar no hay
+# NINGUN contenedor vegetacion:test corriendo, cualquier .gislock que exista
+# es necesariamente huerfano, no una corrida concurrente real (esa la evita
+# igual el flock de run_semanal.sh, una capa mas arriba).
+GISLOCK_HOST="/home/tomas/grassdata/posgar2007_4_cba/MCDA/.gislock"
+if [ -f "$GISLOCK_HOST" ] && ! docker ps --format '{{.Image}}' | grep -qx 'vegetacion:test'; then
+  echo "[AVISO] .gislock huerfano encontrado (sin contenedor vegetacion:test corriendo) -- se elimina antes de arrancar."
+  rm -f "$GISLOCK_HOST"
+fi
+
 declare -A ROIS=(
   [cordoba]="resources/roi/roi_gid_1385_1000m.gpkg"
   [rio_cuarto]="resources/roi/roi_gid_1300_1000m.gpkg"
@@ -95,3 +110,14 @@ done
 
 echo ""
 echo "=== BACKFILL VEGETACION TERMINADO: $OK ok, $FAIL fallidas, $SKIP salteadas (ya existian) de $TOTAL_RUNS ==="
+
+# Contaba $FAIL pero nunca devolvia un codigo de salida distinto de 0 --
+# run_semanal.sh (correr_paso) SI revisa el exit code para decidir si el
+# paso "vegetacion" salio ok o con error, asi que con esto ausente una
+# semana entera de fallos (las 4 localidades) quedaba reportada como "ok"
+# en la notificacion final. Bug real encontrado 2026-09-16: un .gislock
+# huerfano de una corrida anterior bloqueo vegetacion silenciosamente
+# durante dos semanas seguidas sin que la notificacion lo mostrara.
+if [ $FAIL -gt 0 ]; then
+  exit 1
+fi
