@@ -36,13 +36,23 @@ declare -A ROIS=(
   [salsipuedes]="resources/roi/roi_gid_1271_1000m.gpkg"
 )
 
-# $1 (opcional): fecha de referencia de la corrida (el martes ancla que
-# pasa run_semanal.sh) -- sin esto el backfill usaba siempre la fecha
-# real del sistema como limite superior, así que una corrida tardía
-# (ej. jueves porque el martes no se pudo) podía llegar a generar una
-# semana de vegetación de más respecto al resto del pipeline, que sí
-# queda anclado al martes.
-FECHA_REF="${1:-$(date +%Y-%m-%d)}"
+# $1 (obligatorio): fecha de referencia de la corrida (el martes ancla que
+# pasa run_semanal.sh). Antes tenia un default a $(date +%Y-%m-%d) -- una
+# corrida manual sin pasar este argumento (ej. durante una recuperacion de
+# incidente) tomaba la fecha real del sistema como limite superior en vez
+# del martes ancla, generando una semana de vegetacion (y despues, via
+# correr_mcda_todas.sh, de MCDA) de mas que el resto del pipeline nunca
+# pidio -- paso real 2026-09-16, detectado recien el 2026-09-18 porque el
+# dashboard mostraba una semana "futura" en idoneidad/vegetacion que no
+# existia en indice de actividad. Ahora falla fuerte en vez de asumir nada.
+if [ -z "${1:-}" ]; then
+  echo "[ERROR] falta el argumento FECHA_REF (fecha de referencia, ej. 2026-09-15)." >&2
+  echo "        no se usa la fecha del sistema como default a proposito:" >&2
+  echo "        una corrida manual sin este argumento genera una semana de" >&2
+  echo "        vegetacion de mas si no se corre justo el martes ancla." >&2
+  exit 1
+fi
+FECHA_REF="$1"
 
 FECHAS=()
 cur="2025-01-07"
