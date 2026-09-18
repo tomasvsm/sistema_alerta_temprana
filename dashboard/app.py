@@ -501,7 +501,11 @@ def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> 
     dx_aguja, dy_aguja = largo_aguja_px / FIG_W, largo_aguja_px / FIG_H
     dx_piv, dy_piv = radio_pivote_px / FIG_W, radio_pivote_px / FIG_H
 
-    etiquetas = [c.replace("Actividad ", "") for c in CATEGORIAS]
+    # "<br>" en vez de espacio para que "muy alta" (la unica etiqueta de
+    # dos palabras) se parta en dos renglones -- sin insidetextorientation
+    #="horizontal", Plotly la rota para que "entre" en su porcion angosta
+    # de la dona, y queda acostada/dificil de leer.
+    etiquetas = [c.replace("Actividad ", "").replace(" ", "<br>") for c in CATEGORIAS]
     colores_texto = [_texto_legible_sobre(c) for c in PALETA]
     fig = go.Figure(
         data=[go.Pie(
@@ -513,7 +517,9 @@ def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> 
             marker=dict(colors=["rgba(0,0,0,0)"] + PALETA, line=dict(width=0)),
             text=[""] + [f"<b>{e}</b>" for e in etiquetas],
             textinfo="text",
+            textposition="inside",
             textfont=dict(color=["rgba(0,0,0,0)"] + colores_texto, size=12),
+            insidetextorientation="horizontal",
             hoverinfo="skip",
         )],
         layout=go.Layout(
@@ -703,7 +709,7 @@ VARIABLES_ESTATICAS = {
         ["0 a 10", "10 a 20", "20 a 30", "30 a 40", "> 40"],
     ),
     "nbi": (
-        "socioeconomica", "NBI_100m", "NBI",
+        "socioeconomica", "NBI_100m", "Necesidades básicas insatisfechas",
         ["< 5%", "5% a 10%", "10% a 15%", "15% a 25%", "> 25%"],
     ),
 }
@@ -1058,6 +1064,7 @@ st.markdown(
         div[data-testid="stTabs"] [data-baseweb="tab-list"],
         div[data-testid="stSlider"],
         div[data-testid="stFullScreenFrame"] button,
+        [class*="st-key-nav_botones_"],
         .leaflet-control-zoom { display: none !important; }
         /* Esto NO alcanza solo, queda por si ayuda en algo, pero el
            bloqueo real es el atributo HTML inert (no display/CSS) que
@@ -1113,6 +1120,71 @@ st.markdown(
            (Mas opciones > Escala > ~60%), que si funciona bien porque
            reescala la pagina ya renderizada entera, iframes incluidos. */
         @page { size: A4 landscape; margin: 8mm; }
+    }
+    </style>""",
+    unsafe_allow_html=True,
+)
+
+# CSS de los botones de retroceder/adelantar semana (indice de actividad,
+# idoneidad, vegetacion) en un st.markdown SEPARADO del bloque gigante de
+# arriba -- embebido ahi, por algun motivo puntual no identificado (el
+# texto de la regla es CSS valido: probado insertandola sola con
+# insertRule() en la misma pagina y aplica bien) el navegador no la
+# terminaba de registrar y los botones quedaban con el min-height default
+# de Streamlit (40px) en vez de los 24px pedidos. Un bloque propio y chico
+# se aplica sin problema.
+st.markdown(
+    """<style>
+    /* estilo tipo botones de zoom de Leaflet (cuadrados, blancos, icono
+       centrado) -- por prefijo de key (nav_botones_*) para que las 3
+       secciones lo compartan sin repetir CSS. El atributo extra
+       button[data-testid=...] le gana en especificidad al CSS propio de
+       Streamlit para stBaseButton-tertiary (con solo la clase del key,
+       su min-height ganaba la cascada y los botones quedaban de 40px). */
+    [class*="st-key-nav_botones_"] button[data-testid="stBaseButton-tertiary"] {
+        width: 26px !important;
+        height: 24px !important;
+        padding: 0 !important;
+        min-height: unset !important;
+        border-radius: 0 !important;
+    }
+    [class*="st-key-nav_botones_"] button[data-testid="stBaseButton-tertiary"]
+        span[data-testid="stIconMaterial"] {
+        font-size: 17px !important;
+    }
+    [class*="st-key-nav_botones_"] {
+        border: 1px solid rgba(128,128,128,0.35);
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    /* linea divisoria entre los dos botones -- va en el borde de la
+       COLUMNA (limite real entre las dos mitades), no en el boton, para
+       que quede exactamente al medio sin importar como Streamlit alinee
+       el boton dentro de su columna. */
+    [class*="st-key-nav_botones_"] div[data-testid="stColumn"]:first-child {
+        border-right: 1px solid rgba(128,128,128,0.35);
+    }
+    /* el boton (inline-flex de ancho fijo) queda pegado a la izquierda
+       por default dentro del div stButton (display:block) -- se centra
+       por text-align en vez de flex. */
+    [class*="st-key-nav_botones_"] div[data-testid="stButton"] {
+        text-align: center;
+    }
+    [class*="st-key-nav_botones_"] button:not(:disabled):hover {
+        background-color: rgba(128,128,128,0.12) !important;
+    }
+    /* Cabecera (titulo) de cada una de las 4 variables espaciales --
+       altura fija para que las 4 miniaturas de mapa queden alineadas: sin
+       esto, el titulo de NBI ocupa 2 lineas (mas largo que "Poblacion")
+       y sus mapas quedaban mas abajo que los de construcciones/poblacion. */
+    /* flex+center para que un titulo de 1 renglon (Poblacion, Vegetacion)
+       quede centrado en el alto reservado, no pegado arriba dejando un
+       hueco en blanco antes del mapa. */
+    [class*="st-key-var_header_"] {
+        min-height: 46px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
     }
     </style>""",
     unsafe_allow_html=True,
@@ -1269,9 +1341,46 @@ with tab_panel:
                 f'<span style="color:{c}">■</span> {cat.replace("Actividad ", "")}'
                 for c, cat in zip(PALETA, CATEGORIAS)
             )
-            st.markdown(
-                f"**Índice de actividad** ({referencias})", unsafe_allow_html=True
-            )
+
+            def _ir_a_semana(nueva: str):
+                st.session_state[ESTADO_SEMANA_KEY] = nueva
+                st.session_state[f"{ESTADO_SEMANA_KEY}_slider"] = nueva
+                st.session_state[f"{ESTADO_SEMANA_KEY}_select"] = nueva
+
+            # semanas viene ordenada de mas reciente a mas vieja (ver
+            # semanas_disponibles), asi que "retroceder" (semana anterior,
+            # mas vieja) avanza el indice y "adelantar" lo retrocede.
+            idx_semana = semanas.index(semana)
+            with st.container(key="titulo_nav_actividad"):
+                col_titulo_ia, col_sem_nav = st.columns(
+                    [12, 2], gap="small", vertical_alignment="center",
+                )
+                with col_titulo_ia:
+                    st.markdown(
+                        f"**Índice de actividad** ({referencias})",
+                        unsafe_allow_html=True,
+                    )
+                with col_sem_nav:
+                    with st.container(key="nav_botones_actividad"):
+                        col_sem_prev, col_sem_next = st.columns([1, 1], gap=0)
+                        with col_sem_prev:
+                            st.button(
+                                "", key=f"sem_prev_{gid}",
+                                icon=":material/chevron_left:",
+                                type="tertiary", disabled=idx_semana >= len(semanas) - 1,
+                                use_container_width=True,
+                                on_click=_ir_a_semana,
+                                args=(semanas[min(idx_semana + 1, len(semanas) - 1)],),
+                            )
+                        with col_sem_next:
+                            st.button(
+                                "", key=f"sem_next_{gid}",
+                                icon=":material/chevron_right:",
+                                type="tertiary", disabled=idx_semana <= 0,
+                                use_container_width=True,
+                                on_click=_ir_a_semana,
+                                args=(semanas[max(idx_semana - 1, 0)],),
+                            )
 
             semanas_cronologico = list(reversed(semanas))
             st.select_slider(
@@ -1406,13 +1515,52 @@ with tab_panel:
         key=EXP_IDONEIDAD_KEY, on_change="rerun",
     ):
         if st.session_state.get(EXP_IDONEIDAD_KEY):
-            st.markdown("**Índice de idoneidad de hábitat**")
             fechas_idoneidad = semanas_idoneidad_disponibles(gid)
             if not fechas_idoneidad:
+                st.markdown("**Índice de idoneidad de hábitat**")
                 st.info("Sin datos de idoneidad para esta localidad.")
             else:
                 with st.container(width=560, key="idoneidad_centrado"):
                     key_semana_idoneidad = f"semana_idoneidad_{gid}"
+                    if key_semana_idoneidad not in st.session_state:
+                        st.session_state[key_semana_idoneidad] = fechas_idoneidad[-1]
+
+                    def _ir_a_semana_idoneidad(nueva: str):
+                        st.session_state[key_semana_idoneidad] = nueva
+
+                    idx_idoneidad = fechas_idoneidad.index(
+                        st.session_state[key_semana_idoneidad]
+                    )
+                    with st.container(key="titulo_nav_idoneidad"):
+                        col_tit_ido, col_nav_ido = st.columns(
+                            [12, 2], gap="small", vertical_alignment="center",
+                        )
+                        with col_tit_ido:
+                            st.markdown("**Índice de idoneidad de hábitat**")
+                        with col_nav_ido:
+                            with st.container(key="nav_botones_idoneidad"):
+                                col_ido_prev, col_ido_next = st.columns([1, 1], gap=0)
+                                with col_ido_prev:
+                                    st.button(
+                                        "", key=f"ido_prev_{gid}",
+                                        icon=":material/chevron_left:",
+                                        type="tertiary", disabled=idx_idoneidad <= 0,
+                                        use_container_width=True,
+                                        on_click=_ir_a_semana_idoneidad,
+                                        args=(fechas_idoneidad[max(idx_idoneidad - 1, 0)],),
+                                    )
+                                with col_ido_next:
+                                    st.button(
+                                        "", key=f"ido_next_{gid}",
+                                        icon=":material/chevron_right:",
+                                        type="tertiary",
+                                        disabled=idx_idoneidad >= len(fechas_idoneidad) - 1,
+                                        use_container_width=True,
+                                        on_click=_ir_a_semana_idoneidad,
+                                        args=(fechas_idoneidad[
+                                            min(idx_idoneidad + 1, len(fechas_idoneidad) - 1)
+                                        ],),
+                                    )
                     st.select_slider(
                         "Recorrer semanas", options=fechas_idoneidad,
                         value=fechas_idoneidad[-1], key=key_semana_idoneidad,
@@ -1441,11 +1589,12 @@ with tab_panel:
                         st.info(f"Sin datos de {titulo_var.lower()} para esta localidad.")
                     else:
                         with st.container(width=230, key=f"var_{variable}"):
-                            st.markdown(
-                                f'<div style="text-align:center; font-weight:600; '
-                                f'margin-bottom:2px;">{titulo_var}</div>',
-                                unsafe_allow_html=True,
-                            )
+                            with st.container(key=f"var_header_{variable}"):
+                                st.markdown(
+                                    f'<div style="text-align:center; font-weight:600; '
+                                    f'margin-bottom:2px;">{titulo_var}</div>',
+                                    unsafe_allow_html=True,
+                                )
                             st_folium(
                                 mapa_folium_compacto(arr_var, bounds_var, gid),
                                 height=230, width=230, returned_objects=[],
@@ -1461,25 +1610,41 @@ with tab_panel:
             with col_v4:
                 disponibles_veg = vegetacion_disponible(gid)
                 if not disponibles_veg:
-                    st.markdown("**Vegetación**")
-                    st.info("Sin datos de vegetación para esta localidad.")
-                else:
-                    with st.container(width=230, key="var_vegetacion"):
+                    with st.container(key="var_header_vegetacion"):
                         st.markdown(
                             '<div style="text-align:center; font-weight:600; '
                             'margin-bottom:2px;">Vegetación</div>',
                             unsafe_allow_html=True,
                         )
+                    st.info("Sin datos de vegetación para esta localidad.")
+                else:
+                    with st.container(width=230, key="var_vegetacion"):
+                        with st.container(key="var_header_vegetacion"):
+                            st.markdown(
+                                '<div style="text-align:center; font-weight:600; '
+                                'margin-bottom:2px;">Vegetación</div>',
+                                unsafe_allow_html=True,
+                            )
                         fechas_veg = sorted(disponibles_veg.keys())
                         key_semana_veg = f"semana_vegetacion_{gid}"
+                        if key_semana_veg not in st.session_state:
+                            st.session_state[key_semana_veg] = fechas_veg[-1]
+                        fecha_veg_sel = st.session_state[key_semana_veg]
+                        # mismo mapa base real (Esri claro) que las otras 3
+                        # variables, en vez del Plotly imshow anterior que
+                        # quedaba flotando sobre fondo blanco sin contexto.
+                        arr_veg, bounds_veg = cargar_raster_4326(
+                            disponibles_veg[fecha_veg_sel], gid=gid
+                        )
+                        st_folium(
+                            mapa_folium_compacto(arr_veg, bounds_veg, gid),
+                            height=230, width=230, returned_objects=[],
+                            key=f"folium_{gid}_vegetacion_{fecha_veg_sel}",
+                        )
                         st.select_slider(
                             "Recorrer semanas", options=fechas_veg,
                             value=fechas_veg[-1], key=key_semana_veg,
                             label_visibility="collapsed", format_func=fmt_fecha,
-                        )
-                        fecha_veg_sel = st.session_state[key_semana_veg]
-                        st.plotly_chart(
-                            figura_estatica_vegetacion(gid, fecha_veg_sel), width=230,
                         )
                         st.markdown(
                             caja_leyenda_html(
@@ -1551,9 +1716,13 @@ with tab_acerca:
 Este sistema estima, semana a semana y por zona, la actividad de
 *Aedes aegypti* en cuatro localidades de Córdoba: Córdoba capital, Río
 Cuarto, Villa María y Salsipuedes. El índice de actividad final combina un
-índice de oviposición (temporal, basado en datos meteorológicos) con un
-índice de idoneidad de hábitat (espacial, MCDA), a una resolución espacial
-de 100 m y con actualización semanal.
+índice de oviposición temporal, derivado de un modelo de dinámica
+poblacional de *Aedes aegypti* dependiente de datos meteorológicos
+históricos y pronosticados, con un índice de idoneidad de hábitat derivado
+de un análisis de decisión multicriterio (MCDA) utilizando cuatro variables
+espaciales (vegetación, tipo de construcciones, población humana y
+necesidades básicas insatisfechas), a una resolución espacial de 100 m y
+con actualización semanal.
 
 ### Índice de oviposición
 
@@ -1574,8 +1743,8 @@ contra su propia ventana móvil de 365 días previos:
 Un valor de 1 indica el máximo de oviposición del último año en esa
 localidad, no una cantidad absoluta de huevos. Los siete valores diarios
 de cada semana, cada uno con su propia ventana de 365 días, dan además un
-desvío estándar intrasemanal que se reporta como incertidumbre del
-índice.
+desvío estándar intrasemanal que, multiplicado por la idoneidad de
+hábitat, se reporta como la capa de error del índice de actividad.
 
 Además del dato meteorológico observado, el modelo se corre con pronóstico
 (CFS, NOAA) a 14 días como entrada, lo que proyecta el índice de
@@ -1595,7 +1764,7 @@ resolución y categorizada entre 0 y 1, mediante análisis multicriterio
     )
     st.image(
         str(ASSETS_DIR / "workflow_variables_espaciales.png"),
-        caption="Cálculo y categorización de cada una de las cuatro variables espaciales.",
+        caption="Cálculo y categorización de las cuatro variables espaciales utilizadas en el índice de idoneidad de hábitat.",
     )
     st.latex(
         r"MCDA(x,y) = W_{veg}\,V(x,y) + W_{per}\,P(x,y) "
@@ -1615,14 +1784,14 @@ fuente de fluidos vegetales), lo que explica su peso dominante:
 
 | Variable | Peso |
 |---|---|
-| Vegetación (NDVI) | 0.5596 |
+| Vegetación | 0.5596 |
 | Población | 0.2495 |
 | NBI | 0.0955 |
 | Construcciones | 0.0955 |
 
 La vegetación se actualiza semanalmente a partir de Sentinel-2; las otras
-tres variables son estáticas entre semanas y se realinean a la grilla del
-NDVI de cada semana por remuestreo de vecino más cercano.
+tres variables son estáticas entre semanas y se realinean a la grilla de
+vegetación de cada semana por remuestreo de vecino más cercano.
 
 ### Índice de actividad
 
@@ -1653,16 +1822,13 @@ puede caer en una categoría distinta según el lugar.
 
 El indicador "nivel de actividad de esta semana" no muestra un promedio
 del mapa. Muestra la categoría más alta alcanzada por al menos un píxel
-de la localidad esa semana. Es una decisión deliberada de alerta
-temprana, más sensible que el promedio o la moda, que casi siempre darían
-"baja" porque la mayor parte del área está en esa categoría la mayor
-parte del tiempo.
+de la localidad esa semana.
 
 ### Actualización automática
 
 El sistema se actualiza una vez por semana, todos los miércoles: descarga
 datos meteorológicos nuevos con corte al martes anterior inclusive, vuelve
-a correr el modelo de oviposición, incorpora la imagen satelital más
+a correr el modelo de oviposición, incorpora la información satelital más
 reciente disponible y recalcula la idoneidad y el índice de actividad. Si
 algún paso falla esa semana, el resto sigue funcionando igual con lo que
 haya disponible, y el dashboard avisa arriba de todo si algo quedó
@@ -1671,33 +1837,72 @@ desactualizado.
     )
     st.image(
         str(ASSETS_DIR / "workflow_sistema.png"),
-        caption="Cómo está armada la actualización semanal automática.",
+        caption="Contenedores Docker que ejecutan cada paso del pipeline semanal, orquestados en secuencia y comunicados mediante un volumen compartido.",
     )
     st.markdown(
         """
 ### Fuentes de datos
 
-- **Precipitación**: NASA,
-  [GPM IMERG Late](https://www.earthdata.nasa.gov/data/catalog/ges-disc-gpm-3imergdl-07)
-  (diario, 0.1°)
-- **Temperatura y humedad**: NCEP,
-  [GDAS/FNL](https://rda.ucar.edu/datasets/ds083.3/)
-- **Pronóstico climático**: NOAA,
-  [Climate Forecast System](https://www.ncei.noaa.gov/products/weather-climate-models/climate-forecast-system)
-- **Vegetación**:
-  [Copernicus Sentinel-2](https://dataspace.copernicus.eu/data-collections/copernicus-sentinel-missions/sentinel-2)
-  L2A (NDVI)
-- **Población**:
-  [WorldPop](https://data.humdata.org/dataset/worldpop-population-counts-for-argentina)
-- **NBI**:
-  [INDEC](https://www.indec.gob.ar/indec/web/Nivel4-Tema-4-47-156)
-- **Construcciones**: footprints de
-  [Open Buildings](https://sites.research.google/gr/open-buildings/) (Google),
-  altura por diferencia entre el
-  [modelo digital de elevación del IGN](https://www.ign.gob.ar/NuestrasActividades/Geodesia/ModeloDigitalElevaciones/Introduccion)
-  y [FABDEM](https://www.fathom.global/product/fabdem/) (Fathom / Universidad
-  de Bristol)
-- **Mapas base**: Esri World Light Gray Canvas y Esri World Imagery
+- **Modelo de dinámica poblacional**: Aguirre, E., Andreo, V., Porcasi, X.,
+  Lopez, L., Guzman, C., González, P., & Scavuzzo, C. M. (2021).
+  Implementation of a proactive system to monitor *Aedes aegypti*
+  populations using open access historical and forecasted meteorological
+  data. *Ecological Informatics*, *64*, 101351.
+  [https://doi.org/10.1016/j.ecoinf.2021.101351](https://doi.org/10.1016/j.ecoinf.2021.101351)
+- **Precipitación**: Huffman, G. J., Stocker, E. F., Bolvin, D. T., Nelkin,
+  E. J., Tan, J., & Savtchenko, A. (Ed.). (2023). *GPM IMERG Late
+  Precipitation L3 1 day 0.1 degree x 0.1 degree V07* [Conjunto de datos].
+  NASA Goddard Earth Sciences Data and Information Services Center.
+  [https://doi.org/10.5067/GPM/IMERGDL/DAY/07](https://doi.org/10.5067/GPM/IMERGDL/DAY/07)
+- **Temperatura y humedad relativa**: National Centers for Environmental
+  Prediction, National Weather Service, NOAA, U.S. Department of Commerce.
+  (2015). *NCEP GDAS/FNL 0.25 degree global tropospheric analyses and
+  forecast grids* [Conjunto de datos]. NSF National Center for Atmospheric
+  Research.
+  [https://doi.org/10.5065/D65Q4T4Z](https://doi.org/10.5065/D65Q4T4Z)
+- **Pronóstico climático (14 días)**: Saha, S., Moorthi, S., Wu, X., Wang,
+  J., Nadiga, S., Tripp, P., Behringer, D., Hou, Y.-T., Chuang, H.,
+  Iredell, M., Ek, M., Meng, J., Yang, R., Peña Mendez, M., van den Dool,
+  H., Zhang, Q., Wang, W., Chen, M., & Becker, E. (2014). The NCEP Climate
+  Forecast System Version 2. *Journal of Climate*, *27*(6), 2185-2208.
+  [https://doi.org/10.1175/JCLI-D-12-00823.1](https://doi.org/10.1175/JCLI-D-12-00823.1)
+- **Vegetación**: imágenes del sensor MSI a bordo de los satélites
+  Copernicus Sentinel-2 (Agencia Espacial Europea), producto L2A
+  (reflectancia de superficie), 10 m de resolución espacial. European
+  Space Agency. (s. f.). *Sentinel-2 mission*. Copernicus.
+  [https://sentiwiki.copernicus.eu/web/s2-mission](https://sentiwiki.copernicus.eu/web/s2-mission)
+- **Población**: WorldPop. (2020). *Population counts, Argentina*
+  [Conjunto de datos]. University of Southampton.
+  [https://data.humdata.org/dataset/worldpop-population-counts-for-argentina](https://data.humdata.org/dataset/worldpop-population-counts-for-argentina)
+- **Necesidades básicas insatisfechas (NBI)**: Instituto Nacional de
+  Estadística y Censos. (2024). *Censo Nacional de Población, Hogares y
+  Viviendas 2022* [Conjunto de datos].
+  [https://www.indec.gob.ar/indec/web/Nivel4-Tema-4-47-156](https://www.indec.gob.ar/indec/web/Nivel4-Tema-4-47-156)
+- **Construcciones**: altura de edificación obtenida por diferencia entre
+  un modelo digital de superficie y uno de terreno, extraída para cada
+  edificación mediante sus contornos:
+    - Instituto Geográfico Nacional. (2014). *Modelo digital de elevación
+      5 m, extensión Sierras Chicas, Córdoba* [Conjunto de datos].
+      Infraestructura de Datos Espaciales de la Provincia de Córdoba
+      (IDECOR), Mapas Córdoba.
+      [https://obs-idecor-lib.obs.sa-argentina-1.myhuaweicloud.com/metadatos/geomorfologia/dem/metadatos_dem_5m_cba_ext.pdf](https://obs-idecor-lib.obs.sa-argentina-1.myhuaweicloud.com/metadatos/geomorfologia/dem/metadatos_dem_5m_cba_ext.pdf)
+    - Instituto Geográfico Nacional, Dirección de Geodesia. (2019).
+      *Modelo Digital de Elevaciones de la República Argentina, versión
+      2.0*.
+      [https://www.ign.gob.ar/archivos/Informe_MDE-Ar_v2.0_30m.pdf](https://www.ign.gob.ar/archivos/Informe_MDE-Ar_v2.0_30m.pdf)
+    - Hawker, L., Uhe, P., Paulo, L., Sosa, J., Savage, J., Sampson, C., &
+      Neal, J. (2022). A 30 m global map of elevation with forests and
+      buildings removed. *Environmental Research Letters*, *17*(2),
+      024016.
+      [https://doi.org/10.1088/1748-9326/ac4d4f](https://doi.org/10.1088/1748-9326/ac4d4f)
+    - Sirko, W., Kashubin, S., Ritter, M., Annkah, A., Bouchareb, Y. S. E.,
+      Dauphin, Y., Keysers, D., Neumann, M., Cisse, M., & Quinn, J.
+      (2021). Continental-scale building detection from high resolution
+      satellite imagery (arXiv:2107.12283). arXiv.
+      [https://doi.org/10.48550/arXiv.2107.12283](https://doi.org/10.48550/arXiv.2107.12283)
+- **Mapas base**: Esri. (s. f.). *World Light Gray Canvas* y *World
+  Imagery* [Mapas base].
+  [https://www.esri.com](https://www.esri.com)
         """
     )
     st.divider()
