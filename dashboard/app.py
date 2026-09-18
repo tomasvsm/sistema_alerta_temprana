@@ -805,12 +805,22 @@ def caja_leyenda_html(
 
 @st.cache_data(ttl=CACHE_TTL)
 def vegetacion_disponible(gid: str) -> dict[str, str]:
-    """fecha de fin -> ruta al NDVI categorico de esa semana."""
+    """fecha de fin -> ruta al NDVI categorico de esa semana.
+
+    Descarta semanas mas nuevas que fecha_referencia(): vegetacion es
+    siempre retrospectiva (Sentinel-2 real, no pronostico), asi que un
+    archivo con fecha de fin posterior a la ultima corrida del
+    orquestador es necesariamente un dato viejo/de prueba mal generado,
+    no una semana real todavia no llegada. Sin este filtro, indice de
+    actividad quedaba correctamente en la ultima semana real pero
+    idoneidad/vegetacion mostraban una semana "futura" que nunca debio
+    existir."""
     nombre = GID_SNAKE[gid]
     patron = re.compile(rf"^{nombre}_(\d{{4}}-\d{{2}}-\d{{2}})_(\d{{4}}-\d{{2}}-\d{{2}})_vegetacion$")
     resultado = {}
     if not VEGETACION_DIR.is_dir():
         return resultado
+    hoy_datos = fecha_referencia()
     for d in VEGETACION_DIR.iterdir():
         if not d.is_dir():
             continue
@@ -818,6 +828,8 @@ def vegetacion_disponible(gid: str) -> dict[str, str]:
         if not m:
             continue
         fecha_fin = m.group(2)
+        if pd.Timestamp(fecha_fin) > hoy_datos:
+            continue
         tif = d / "outputs" / "final" / f"{d.name}_NDVI_cat_100m.tif"
         if tif.exists():
             resultado[fecha_fin] = str(tif)
@@ -826,10 +838,16 @@ def vegetacion_disponible(gid: str) -> dict[str, str]:
 
 @st.cache_data(ttl=CACHE_TTL)
 def semanas_idoneidad_disponibles(gid: str) -> list[str]:
+    """Igual que vegetacion_disponible, MCDA/idoneidad tambien es siempre
+    retrospectiva -- se descartan semanas posteriores a fecha_referencia()."""
     patron = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})_{gid}_MCDA\.tif$")
     if not MCDA_DIR.is_dir():
         return []
-    fechas = [m.group(1) for f in MCDA_DIR.iterdir() if (m := patron.match(f.name))]
+    hoy_datos = fecha_referencia()
+    fechas = [
+        m.group(1) for f in MCDA_DIR.iterdir()
+        if (m := patron.match(f.name)) and pd.Timestamp(m.group(1)) <= hoy_datos
+    ]
     return sorted(fechas)
 
 
