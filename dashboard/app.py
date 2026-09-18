@@ -971,29 +971,27 @@ st.markdown(
            con width:100% fijo desde Streamlit, asi que un margin-right
            nomas los empuja a desbordar el borde derecho de la pagina en
            vez de achicarlos. */
-        .st-key-exp_serie_temporal, .st-key-exp_datos_meteorologicos {
-            margin-left: 164px; width: calc(100% - 328px) !important;
-        }
-        /* exp_idoneidad_variables aparte: CERRADO se comporta como los
-           otros dos (necesita margin-left:164px para arrancar en x=244),
-           pero ABIERTO (contenido real: 4 mapas folium + plots) algo no
-           identificado ya lo corre 164px por su cuenta, y sumarle otros
-           164px lo pasaba a 326px (val real +164 en vez de +328, causa no
-           encontrada). Con :has(details[open]) se corrige margin-left a 0
-           especificamente cuando esta abierto, sin tocar el Python (que
-           shiftear indentado de las 3 expanders para envolverlas en un
-           container comun era un cambio mucho mas grande y riesgoso).
-           Verificado con getBoundingClientRect en vivo, abierto y
-           cerrado. */
+        .st-key-exp_serie_temporal, .st-key-exp_datos_meteorologicos,
         .st-key-exp_idoneidad_variables {
             margin-left: 164px; width: calc(100% - 328px) !important;
-            /* Streamlit le pone "transition: all" a este wrapper -- sin
-               esto, el salto de margin-left (164px a 0) al abrirlo se ve
-               como un deslizamiento/estirón en cámara lenta en vez de
-               acomodarse en el momento. */
-            transition: none !important;
         }
-        .st-key-exp_idoneidad_variables:has(details[open]) { margin-left: 0; }
+        /* exp_idoneidad_variables aparte: causa de raiz encontrada con
+           polling de getBoundingClientRect cada 10ms en vivo. Streamlit
+           le pone align-self:center (no display/margin) a los wrappers
+           de ancho fijo, pero recien DESPUES de montar el contenido real
+           (los 4 mapas Folium tardan ~150-200ms en montar como iframe) --
+           antes de eso el wrapper queda en align-self:auto (=flex-start,
+           heredado del padre). Con un padre de 1576px y el wrapper en
+           1248px, ese salto de flex-start a center mueve el wrapper
+           +164px de golpe apenas termina de cargar (x=80 -> x=244) -- de
+           ahi el corrimiento hacia la derecha que se ve al desplegar.
+           serie_temporal/datos_meteorologicos no muestran el mismo salto
+           porque no tienen contenido pesado (mapas/iframes) que tarde en
+           montar, asi que el mismo cambio de align-self pasa demasiado
+           rapido para notarse. Mismo patron que .st-key-mapa_centrado y
+           .st-key-semaforo_centrado mas abajo: se fuerza flex-start desde
+           el vamos para no depender de cuando Streamlit decide centrar. */
+        .st-key-exp_idoneidad_variables { align-self: flex-start !important; }
     }
     [class*="st-key-pie_logos_"] { justify-content: center; gap: 28px; margin-bottom: 4px; }
     /* st.image agrega de forma automatica un boton de pantalla completa
