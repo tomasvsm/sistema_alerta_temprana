@@ -23,7 +23,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
 import rasterio
 import streamlit as st
@@ -647,6 +646,20 @@ def raster_a_imagen_rgba_viridis5(arr: np.ndarray) -> np.ndarray:
     return (rgba * 255).astype(np.uint8)
 
 
+def raster_a_imagen_rgba_idoneidad(arr: np.ndarray) -> np.ndarray:
+    """RGBA para el MCDA/idoneidad, en 4 clases por cuartos del rango
+    [0,1] (mismos colores que el indice de actividad, PALETA). NO usa
+    bounds_categoricos(): esos cortes de Youden/terciles estan calibrados
+    contra el indice de actividad (idoneidad x oviposicion), no contra el
+    MCDA solo, que sin el factor estacional de oviposicion pintaria casi
+    todo "alta"/"muy alta" con esos mismos cortes."""
+    codigo = np.digitize(np.nan_to_num(arr, nan=0.0), [0.25, 0.5, 0.75])
+    cmap = mcolors.ListedColormap(PALETA)
+    rgba = cmap(codigo)
+    rgba[np.isnan(arr), 3] = 0.0
+    return (rgba * 255).astype(np.uint8)
+
+
 @st.cache_data(ttl=CACHE_TTL)
 def cargar_raster_nativo(path: str, gid: str | None = None) -> np.ndarray:
     """Lee el raster en su CRS original (5346), sin reproyectar -- para
@@ -676,18 +689,6 @@ def serie_temporal_indice_actividad(gid: str) -> pd.DataFrame:
     df = pd.DataFrame(filas)
     df["date"] = pd.to_datetime(df["date"])
     return df.sort_values("date")
-
-
-def _colorscale_escalonada(colores: list[str]) -> list:
-    """Colorscale de Plotly con bandas solidas (sin degrade) para un mapa
-    categorico -- cada color ocupa 1/n del rango, sin interpolar con el
-    siguiente."""
-    n = len(colores)
-    escala = []
-    for i, c in enumerate(colores):
-        escala.append([i / n, c])
-        escala.append([(i + 1) / n, c])
-    return escala
 
 
 # Mismos 5 colores (Viridis discreto en 0/0.25/0.5/0.75/1) y mismas
@@ -731,11 +732,13 @@ def cargar_variable_estatica_4326(gid: str, variable: str):
     return cargar_raster_4326(str(ruta), gid=gid)
 
 
-def mapa_folium_compacto(arr: np.ndarray, bounds, gid: str) -> folium.Map:
+def mapa_folium_compacto(imagen_rgba: np.ndarray, bounds, gid: str) -> folium.Map:
     """Mini mapa Leaflet estatico (sin zoom/paneo manual, sin controles)
-    para las variables de referencia de Variables espaciales -- mismo
-    basemap claro que el indice de actividad, para que no queden
-    "flotando" sobre fondo blanco sin contexto geografico."""
+    para las variables de referencia de Variables espaciales e idoneidad
+    -- mismo basemap claro que el indice de actividad, para que no queden
+    "flotando" sobre fondo blanco sin contexto geografico. Recibe la
+    imagen RGBA ya categorizada/coloreada (cada seccion usa su propia
+    paleta y cortes) en vez de calcularla adentro."""
     centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
     m = folium.Map(location=centro, tiles=None, zoom_control=False, attributionControl=False)
     folium.TileLayer(
@@ -744,7 +747,7 @@ def mapa_folium_compacto(arr: np.ndarray, bounds, gid: str) -> folium.Map:
         attr="Esri",
     ).add_to(m)
     folium.raster_layers.ImageOverlay(
-        image=raster_a_imagen_rgba_viridis5(arr), bounds=bounds, opacity=0.85,
+        image=imagen_rgba, bounds=bounds, opacity=0.85,
     ).add_to(m)
     for anillo in contorno_roi_4326(gid):
         folium.PolyLine(locations=anillo, color="#8a8a8a", weight=1, opacity=0.7).add_to(m)
@@ -801,66 +804,12 @@ def vegetacion_disponible(gid: str) -> dict[str, str]:
 
 
 @st.cache_data(ttl=CACHE_TTL)
-def figura_estatica_vegetacion(gid: str, fecha: str) -> go.Figure:
-    arr = cargar_raster_nativo(vegetacion_disponible(gid)[fecha], gid=gid)
-    codigo = np.round(arr * 4)
-    fig = px.imshow(
-        codigo,
-        color_continuous_scale=_colorscale_escalonada(PALETA_VIRIDIS5),
-        range_color=[0, 5], aspect="equal",
-    )
-    fig.update_traces(hoverinfo="skip", hovertemplate=None)
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
-    fig.update_layout(
-        # aspect="equal" fuerza el raster (cuadrado) a ocupar un cuadrado
-        # centrado dentro del lienzo -- height tiene que quedar parecido
-        # al width (230, ver st.plotly_chart) para que el cuadrado llene
-        # el lienzo en vez de dejar franjas en blanco arriba/abajo.
-        height=230, margin=dict(t=10, b=10, l=10, r=10), coloraxis_showscale=False,
-    )
-    return fig
-
-
-@st.cache_data(ttl=CACHE_TTL)
 def semanas_idoneidad_disponibles(gid: str) -> list[str]:
     patron = re.compile(rf"^(\d{{4}}-\d{{2}}-\d{{2}})_{gid}_MCDA\.tif$")
     if not MCDA_DIR.is_dir():
         return []
     fechas = [m.group(1) for f in MCDA_DIR.iterdir() if (m := patron.match(f.name))]
     return sorted(fechas)
-
-
-@st.cache_data(ttl=CACHE_TTL)
-def figura_estatica_idoneidad(gid: str, fecha: str) -> go.Figure:
-    """Idoneidad (MCDA) de una semana puntual, categorizada en 4 clases
-    lineales (cuartos del rango [0,1]) y con los mismos colores que el
-    indice de actividad -- pero NO con los cortes de Youden/terciles de
-    bounds_categoricos(), que estan calibrados contra el indice de
-    actividad real (idoneidad x oviposicion, con fuerte estacionalidad
-    por el piso de oviposicion). El MCDA solo no tiene ese factor
-    estacional y su rango se mantiene medio-alto casi todo el año en
-    zona urbana, asi que esos cortes lo pintaban casi todo como
-    "alta"/"muy alta"."""
-    arr = cargar_raster_nativo(str(MCDA_DIR / f"{fecha}_{gid}_MCDA.tif"), gid=gid)
-    codigo = np.digitize(arr, [0.25, 0.5, 0.75]).astype(float)
-    codigo[np.isnan(arr)] = np.nan
-    fig = px.imshow(
-        codigo,
-        color_continuous_scale=_colorscale_escalonada(PALETA),
-        range_color=[0, len(PALETA)], aspect="equal",
-    )
-    fig.update_traces(hoverinfo="skip", hovertemplate=None)
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False)
-    fig.update_layout(
-        # aspect="equal" fuerza el raster (cuadrado) a ocupar un cuadrado
-        # centrado dentro del lienzo -- height tiene que quedar parecido
-        # al width (500, ver st.plotly_chart) para que el cuadrado llene
-        # el lienzo en vez de dejar franjas en blanco arriba/abajo.
-        height=380, coloraxis_showscale=False, margin=dict(t=10, b=10, l=10, r=10),
-    )
-    return fig
 
 
 @st.cache_data(ttl=CACHE_TTL)
@@ -1561,16 +1510,38 @@ with tab_panel:
                                             min(idx_idoneidad + 1, len(fechas_idoneidad) - 1)
                                         ],),
                                     )
-                    st.select_slider(
-                        "Recorrer semanas", options=fechas_idoneidad,
-                        value=fechas_idoneidad[-1], key=key_semana_idoneidad,
-                        label_visibility="collapsed", format_func=fmt_fecha,
-                    )
+                    # el ancho del slider coincide con el del mapa (380px),
+                    # no con el del contenedor entero (560px, que incluye
+                    # la leyenda a la derecha) -- si no, quedaba mas ancho
+                    # que el mapa que esta "recorriendo".
+                    with st.container(width=380):
+                        st.select_slider(
+                            "Recorrer semanas", options=fechas_idoneidad,
+                            value=fechas_idoneidad[-1], key=key_semana_idoneidad,
+                            label_visibility="collapsed", format_func=fmt_fecha,
+                        )
                     with st.container(horizontal=True, vertical_alignment="center"):
                         fecha_idoneidad_sel = st.session_state[key_semana_idoneidad]
-                        st.plotly_chart(
-                            figura_estatica_idoneidad(gid, fecha_idoneidad_sel), width=380,
+                        # mismo mapa base real (Esri claro) que las 4
+                        # variables espaciales, en vez del Plotly imshow
+                        # anterior que quedaba flotando sobre fondo blanco.
+                        arr_ido, bounds_ido = cargar_raster_4326(
+                            str(MCDA_DIR / f"{fecha_idoneidad_sel}_{gid}_MCDA.tif"), gid=gid
                         )
+                        # el custom component (iframe) no respeta el
+                        # width= pedido si el padre es un contenedor
+                        # horizontal=True -- crece al ancho disponible del
+                        # flex (560px) en vez de quedarse en 380. Un
+                        # contenedor con ancho fijo alrededor fuerza el
+                        # tamaño real del item del flex.
+                        with st.container(width=380):
+                            st_folium(
+                                mapa_folium_compacto(
+                                    raster_a_imagen_rgba_idoneidad(arr_ido), bounds_ido, gid
+                                ),
+                                height=380, width=380, returned_objects=[],
+                                key=f"folium_{gid}_idoneidad_{fecha_idoneidad_sel}",
+                            )
                         etiquetas_idoneidad = [c.replace("Actividad ", "") for c in CATEGORIAS]
                         st.markdown(
                             caja_leyenda_html("Idoneidad", PALETA, etiquetas_idoneidad),
@@ -1596,7 +1567,9 @@ with tab_panel:
                                     unsafe_allow_html=True,
                                 )
                             st_folium(
-                                mapa_folium_compacto(arr_var, bounds_var, gid),
+                                mapa_folium_compacto(
+                                    raster_a_imagen_rgba_viridis5(arr_var), bounds_var, gid
+                                ),
                                 height=230, width=230, returned_objects=[],
                                 key=f"folium_{gid}_{variable}",
                             )
@@ -1637,7 +1610,9 @@ with tab_panel:
                             disponibles_veg[fecha_veg_sel], gid=gid
                         )
                         st_folium(
-                            mapa_folium_compacto(arr_veg, bounds_veg, gid),
+                            mapa_folium_compacto(
+                                raster_a_imagen_rgba_viridis5(arr_veg), bounds_veg, gid
+                            ),
                             height=230, width=230, returned_objects=[],
                             key=f"folium_{gid}_vegetacion_{fecha_veg_sel}",
                         )
