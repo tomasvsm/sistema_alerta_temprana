@@ -336,27 +336,38 @@ class ControlCoordenadas(MacroElement):
 class RecalcularAlMostrar(MacroElement):
     """Mismo hook de invalidateSize() al imprimir que ControlRecentrar,
     sin el boton de recentrar -- para los mapas chicos/de referencia
-    (variables estaticas). Ademas corrige un problema especifico de estos
-    mapas: como viven dentro de un expander colapsado por defecto
-    ("Variables espaciales"), su iframe arranca oculto/0x0, y
-    fitBounds() calculado en ese momento cae al zoom minimo (mapa del
-    mundo entero) -- ese calculo no se repite solo al abrir el expander
-    despues. Un ResizeObserver sobre el propio contenedor del mapa
-    detecta el momento en que pasa a tener tamaño real y ahi si hace
-    invalidateSize()+fitBounds()."""
+    (variables estaticas e idoneidad). Ademas corrige un problema
+    especifico de estos mapas: como viven dentro de un expander
+    colapsado por defecto ("Variables espaciales"), su iframe arranca
+    oculto/0x0, y fitBounds() calculado en ese momento cae al zoom minimo
+    (mapa del mundo entero) -- ese calculo no se repite solo al abrir el
+    expander despues. Un ResizeObserver sobre el propio contenedor del
+    mapa detecta cada cambio de tamaño real y ahi hace
+    invalidateSize()+fitBounds() -- SIN guardia de "una sola vez": con un
+    contenedor de ancho fijo alrededor (ver idoneidad), el iframe pasa por
+    un ancho intermedio antes de asentarse en el final, y ajustar solo en
+    el primer resize (>0x0) fiteaba contra ese tamaño transitorio, dejando
+    el mapa mal encuadrado/chico. Estos mapas no tienen pan/zoom manual
+    (zoom_control=False), asi que no hay interaccion del usuario que
+    preservar al re-ajustar de mas."""
 
     _template = Template("""
         {% macro script(this, kwargs) %}
         (function() {
             var mapa = {{ this._parent.get_name() }};
             var limites = L.latLngBounds({{ this.bounds }});
-            var yaAjustado = false;
             function ajustar() {
                 var tam = mapa.getSize();
-                if (tam.x > 0 && tam.y > 0 && !yaAjustado) {
-                    yaAjustado = true;
+                if (tam.x > 0 && tam.y > 0) {
                     mapa.invalidateSize();
-                    mapa.fitBounds(limites);
+                    // {animate:false}: con zoomSnap=0 (zoom continuo) el
+                    // fitBounds animado redondea el zoom final al entero
+                    // mas cercano igual (la animacion de Leaflet solo
+                    // interpola CSS transform entre escalones enteros),
+                    // dejando el mismo ajuste grosero que sin zoomSnap.
+                    // Sin animacion, el zoom final queda fraccionario y
+                    // ajustado de verdad al tamaño real del contenedor.
+                    mapa.fitBounds(limites, {animate: false});
                 }
             }
             new ResizeObserver(ajustar).observe(mapa.getContainer());
@@ -740,7 +751,17 @@ def mapa_folium_compacto(imagen_rgba: np.ndarray, bounds, gid: str) -> folium.Ma
     imagen RGBA ya categorizada/coloreada (cada seccion usa su propia
     paleta y cortes) en vez de calcularla adentro."""
     centro = [(bounds[0][0] + bounds[1][0]) / 2, (bounds[0][1] + bounds[1][1]) / 2]
-    m = folium.Map(location=centro, tiles=None, zoom_control=False, attributionControl=False)
+    # zoom_snap=0 permite zoom continuo (no solo enteros) -- con zoom
+    # entero, fitBounds() elige el escalon mas grande que todavia entra,
+    # y cuanto entra varia mucho segun el tamaño en px del contenedor
+    # (230 vs 380), dejando margenes bien distintos para el MISMO ejido
+    # (ej. idoneidad a 380px quedaba con el ejido ocupando solo ~53% del
+    # mapa, muy chico, mientras a 230px entraba ~89%). Con zoom continuo
+    # el ajuste es igual de ajustado sin importar el tamaño del mapa.
+    m = folium.Map(
+        location=centro, tiles=None, zoom_control=False, attributionControl=False,
+        zoom_snap=0,
+    )
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/"
               "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
@@ -1480,41 +1501,44 @@ with tab_panel:
                     idx_idoneidad = fechas_idoneidad.index(
                         st.session_state[key_semana_idoneidad]
                     )
-                    with st.container(key="titulo_nav_idoneidad"):
-                        col_tit_ido, col_nav_ido = st.columns(
-                            [12, 2], gap="small", vertical_alignment="center",
-                        )
-                        with col_tit_ido:
-                            st.markdown("**Índice de idoneidad de hábitat**")
-                        with col_nav_ido:
-                            with st.container(key="nav_botones_idoneidad"):
-                                col_ido_prev, col_ido_next = st.columns([1, 1], gap=0)
-                                with col_ido_prev:
-                                    st.button(
-                                        "", key=f"ido_prev_{gid}",
-                                        icon=":material/chevron_left:",
-                                        type="tertiary", disabled=idx_idoneidad <= 0,
-                                        use_container_width=True,
-                                        on_click=_ir_a_semana_idoneidad,
-                                        args=(fechas_idoneidad[max(idx_idoneidad - 1, 0)],),
-                                    )
-                                with col_ido_next:
-                                    st.button(
-                                        "", key=f"ido_next_{gid}",
-                                        icon=":material/chevron_right:",
-                                        type="tertiary",
-                                        disabled=idx_idoneidad >= len(fechas_idoneidad) - 1,
-                                        use_container_width=True,
-                                        on_click=_ir_a_semana_idoneidad,
-                                        args=(fechas_idoneidad[
-                                            min(idx_idoneidad + 1, len(fechas_idoneidad) - 1)
-                                        ],),
-                                    )
-                    # el ancho del slider coincide con el del mapa (380px),
-                    # no con el del contenedor entero (560px, que incluye
-                    # la leyenda a la derecha) -- si no, quedaba mas ancho
-                    # que el mapa que esta "recorriendo".
+                    # el titulo+nav y el slider comparten el ancho del mapa
+                    # (380px), no el del contenedor entero (560px, que
+                    # incluye la leyenda a la derecha) -- si no, los
+                    # botones de semana quedaban mas a la derecha que el
+                    # mapa/fecha que estan recorriendo, sobre la leyenda.
                     with st.container(width=380):
+                        with st.container(key="titulo_nav_idoneidad"):
+                            col_tit_ido, col_nav_ido = st.columns(
+                                [12, 2], gap="small", vertical_alignment="center",
+                            )
+                            with col_tit_ido:
+                                st.markdown("**Índice de idoneidad de hábitat**")
+                            with col_nav_ido:
+                                with st.container(key="nav_botones_idoneidad"):
+                                    col_ido_prev, col_ido_next = st.columns([1, 1], gap=0)
+                                    with col_ido_prev:
+                                        st.button(
+                                            "", key=f"ido_prev_{gid}",
+                                            icon=":material/chevron_left:",
+                                            type="tertiary", disabled=idx_idoneidad <= 0,
+                                            use_container_width=True,
+                                            on_click=_ir_a_semana_idoneidad,
+                                            args=(fechas_idoneidad[
+                                                max(idx_idoneidad - 1, 0)
+                                            ],),
+                                        )
+                                    with col_ido_next:
+                                        st.button(
+                                            "", key=f"ido_next_{gid}",
+                                            icon=":material/chevron_right:",
+                                            type="tertiary",
+                                            disabled=idx_idoneidad >= len(fechas_idoneidad) - 1,
+                                            use_container_width=True,
+                                            on_click=_ir_a_semana_idoneidad,
+                                            args=(fechas_idoneidad[
+                                                min(idx_idoneidad + 1, len(fechas_idoneidad) - 1)
+                                            ],),
+                                        )
                         st.select_slider(
                             "Recorrer semanas", options=fechas_idoneidad,
                             value=fechas_idoneidad[-1], key=key_semana_idoneidad,
