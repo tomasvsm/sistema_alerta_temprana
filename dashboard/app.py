@@ -1012,6 +1012,9 @@ st.markdown(
         .st-key-exp_idoneidad_variables { align-self: flex-start !important; }
     }
     [class*="st-key-pie_logos_"] { justify-content: center; gap: 28px; margin-bottom: 4px; }
+    /* figuras de workflow en Acerca de -- centradas (imagen + pie), no
+       pegadas al margen izquierdo como quedan por default. */
+    [class*="st-key-fig_workflow_"] { display: flex; flex-direction: column; align-items: center; }
     /* st.image agrega de forma automatica un boton de pantalla completa
        al pasar el mouse -- no hace falta para un logo institucional, y en
        el de Conicet (con "CONICET" escrito arriba del todo) el recuadro
@@ -1777,11 +1780,12 @@ resolución y categorizada entre 0 y 1, mediante análisis multicriterio
 (MCDA-AHP).
 """
     )
-    st.image(
-        str(ASSETS_DIR / "workflow_variables_espaciales.png"),
-        caption="Cálculo y categorización de las cuatro variables espaciales utilizadas en el índice de idoneidad de hábitat.",
-        width=850,
-    )
+    with st.container(key="fig_workflow_variables"):
+        st.image(
+            str(ASSETS_DIR / "workflow_variables_espaciales.png"),
+            caption="Cálculo y categorización de las cuatro variables espaciales utilizadas en el índice de idoneidad de hábitat.",
+            width=850,
+        )
     st.latex(
         r"MCDA(x,y) = W_{veg}\,V(x,y) + W_{per}\,P(x,y) "
         r"+ W_{soc}\,S(x,y) + W_{con}\,C(x,y)"
@@ -1851,11 +1855,12 @@ haya disponible, y el dashboard avisa arriba de todo si algo quedó
 desactualizado.
 """
     )
-    st.image(
-        str(ASSETS_DIR / "workflow_sistema.png"),
-        caption="Contenedores Docker que ejecutan cada paso del pipeline semanal, orquestados en secuencia y comunicados mediante un volumen compartido.",
-        width=850,
-    )
+    with st.container(key="fig_workflow_sistema"):
+        st.image(
+            str(ASSETS_DIR / "workflow_sistema.png"),
+            caption="Contenedores Docker que ejecutan cada paso del pipeline semanal, orquestados en secuencia y comunicados mediante un volumen compartido.",
+            width=850,
+        )
     st.markdown(
         """
 ### Fuentes de datos
