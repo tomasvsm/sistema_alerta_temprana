@@ -1780,6 +1780,7 @@ resolución y categorizada entre 0 y 1, mediante análisis multicriterio
     st.image(
         str(ASSETS_DIR / "workflow_variables_espaciales.png"),
         caption="Cálculo y categorización de las cuatro variables espaciales utilizadas en el índice de idoneidad de hábitat.",
+        width=850,
     )
     st.latex(
         r"MCDA(x,y) = W_{veg}\,V(x,y) + W_{per}\,P(x,y) "
@@ -1853,6 +1854,7 @@ desactualizado.
     st.image(
         str(ASSETS_DIR / "workflow_sistema.png"),
         caption="Contenedores Docker que ejecutan cada paso del pipeline semanal, orquestados en secuencia y comunicados mediante un volumen compartido.",
+        width=850,
     )
     st.markdown(
         """
