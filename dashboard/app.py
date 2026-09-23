@@ -1782,7 +1782,7 @@ resolución y categorizada entre 0 y 1, mediante análisis multicriterio
     )
     with st.container(key="fig_workflow_variables"):
         st.image(
-            str(ASSETS_DIR / "workflow_variables_espaciales.png"),
+            str(ASSETS_DIR / "workflow_variables_espaciales.svg"),
             caption="Cálculo y categorización de las cuatro variables espaciales utilizadas en el índice de idoneidad de hábitat.",
             width=850,
         )
@@ -1857,7 +1857,7 @@ desactualizado.
     )
     with st.container(key="fig_workflow_sistema"):
         st.image(
-            str(ASSETS_DIR / "workflow_sistema.png"),
+            str(ASSETS_DIR / "workflow_docker.drawio.svg"),
             caption="Contenedores Docker que ejecutan cada paso del pipeline semanal, orquestados en secuencia y comunicados mediante un volumen compartido.",
             width=850,
         )
