@@ -79,7 +79,7 @@ GID_SNAKE = {
 # que llevo a la exclusion).
 YOUDEN = {"1252": 0.1945, "1271": 0.0829, "1300": 0.3736, "1385": 0.1632}
 
-# Cortes de las categorias "media" y "alta": terciles del Rw real de las
+# Cortes de las categorias "media" y "alta": terciles del IAw real de las
 # ovitrampas de esa localidad que superan su propio umbral de Youden
 # (mismo dataset y mismo criterio de calibracion que YOUDEN, no una
 # division geometrica del rango [Youden, 1.0] -- esa version anterior
@@ -127,7 +127,7 @@ def bounds_categoricos(gid: str) -> list[float]:
 
 def codigo_y_valor_categoria_maxima(gid: str, arr: np.ndarray) -> tuple[int, float]:
     """Categoria MAS ALTA presente entre los pixeles validos de esta
-    semana (-1, nan si no hay datos) y el valor Rw de ese pixel, no la mas
+    semana (-1, nan si no hay datos) y el valor IAw de ese pixel, no la mas
     frecuente: un solo pixel en una categoria superior ya sube el
     semaforo a ese nivel. Criterio de alerta temprana -- mas sensible que
     el promedio/moda, que casi siempre daria "baja" porque la mayoria del
@@ -473,7 +473,7 @@ def figura_semaforo_gauge(gid: str, codigo_activo: int, valor_activo: float) -> 
     figuras de forma "line"/"circle" para la aguja y el pivote.
 
     Los 4 segmentos se dibujan del MISMO ancho visual (no proporcional al
-    ancho real en Rw de cada categoria) -- con los anchos reales, "muy
+    ancho real en IAw de cada categoria) -- con los anchos reales, "muy
     alta" ocupa mas de medio semicirculo y el resto queda comprimido,
     ilegible. La aguja sigue reflejando el valor real: se reescala la
     posicion del valor DENTRO de su categoria (Youden y los 2 terciles de
@@ -1821,9 +1821,9 @@ semana junto con la vegetación, así que el resultado diario se promedia a
 resolución semanal para el mapa final:
 """
     )
-    st.latex(r"R_d(x,y) = MCDA_w(x,y) \times IO_d")
+    st.latex(r"IA_d(x,y) = MCDA_w(x,y) \times IO_d")
     st.markdown("Promediado sobre los 7 días de la semana:")
-    st.latex(r"R_w(x,y) = \frac{1}{7}\sum_{d=1}^{7} R_d(x,y)")
+    st.latex(r"IA_w(x,y) = \frac{1}{7}\sum_{d=1}^{7} IA_d(x,y)")
     st.markdown(
         """
 con el desvío estándar intrasemanal disponible como capa de error (σ) en
