@@ -56,7 +56,16 @@ FECHA_REF="$1"
 
 FECHAS=()
 cur="2025-01-07"
-end="$FECHA_REF"
+# El limite se compara contra FECHA_FIN (=cur+7), no contra FECHA (=cur):
+# FECHA_REF es el martes mas reciente YA CONCLUIDO (lo resuelve run_semanal.sh
+# antes de llamar a este script). Comparar directo contra FECHA hacia que la
+# ultima semana de la grilla pidiera FECHA_FIN=FECHA_REF+7, es decir imagenes
+# de dias que todavia no habian pasado el dia de la corrida -- por eso esa
+# semana SIEMPRE caia en el fallback "retrocedio 1 semana" (bug real
+# encontrado 2026-10-09: confirmado con el log interno de
+# villa_maria_2026-09-30_2026-10-06_vegetacion, que pedia explicitamente
+# la ventana 2026-09-30 -> 2026-10-06 corriendo el propio 2026-09-30).
+end="$(date -d "$FECHA_REF - 7 days" +%Y-%m-%d)"
 while [ "$(date -d "$cur" +%s)" -le "$(date -d "$end" +%s)" ]; do
   FECHAS+=("$cur")
   cur="$(date -d "$cur + 7 days" +%Y-%m-%d)"
@@ -74,9 +83,25 @@ for LOCALIDAD in "${!ROIS[@]}"; do
   for FECHA in "${FECHAS[@]}"; do
     N=$((N+1))
     FECHA_FIN="$(date -d "$FECHA + 7 days" +%Y-%m-%d)"
-    OUTDIR="data/vegetacion/${LOCALIDAD}_${FECHA}_${FECHA_FIN}_vegetacion"
-    OUTNAME="${LOCALIDAD}_${FECHA}_${FECHA_FIN}_vegetacion"
+    # calculo_vegetacion.py etiqueta la carpeta con label_start=ref_date-6 (no
+    # ref_date-7): como aca ref_date=FECHA_FIN, el nombre real que genera es
+    # FECHA+1 .. FECHA_FIN (6 dias de diferencia), no FECHA .. FECHA_FIN como
+    # asumia este chequeo. Ese desajuste (bug real encontrado 2026-10-09, tras
+    # el fix de off-by-one aplicado a get_date_window en calculo_vegetacion.py
+    # el 2026-09-08/09) hacia que el chequeo de "ya existe" nunca coincidiera
+    # para ninguna semana procesada desde esa fecha, y cada corrida del
+    # backfill reprocesaba TODAS esas semanas en las 4 localidades de nuevo.
+    LABEL_START="$(date -d "$FECHA + 1 day" +%Y-%m-%d)"
+    OUTDIR="data/vegetacion/${LOCALIDAD}_${LABEL_START}_${FECHA_FIN}_vegetacion"
+    OUTNAME="${LOCALIDAD}_${LABEL_START}_${FECHA_FIN}_vegetacion"
     RESULTADO_FINAL="$OUTDIR/outputs/final/${OUTNAME}_NDVI_cat_100m.tif"
+    # Semanas procesadas ANTES del fix de off-by-one en get_date_window
+    # (2026-09-08/09) quedaron guardadas con la convencion vieja (FECHA
+    # .. FECHA_FIN, 7 dias). Se chequean ambas para no reprocesar esas
+    # semanas ya validas solo por el cambio de convencion de nombres.
+    OUTDIR_VIEJO="data/vegetacion/${LOCALIDAD}_${FECHA}_${FECHA_FIN}_vegetacion"
+    OUTNAME_VIEJO="${LOCALIDAD}_${FECHA}_${FECHA_FIN}_vegetacion"
+    RESULTADO_FINAL_VIEJO="$OUTDIR_VIEJO/outputs/final/${OUTNAME_VIEJO}_NDVI_cat_100m.tif"
 
     # Chequear el ARCHIVO FINAL, no la carpeta: calculo_vegetacion.py crea
     # el arbol de carpetas (ensure_dirs) antes de descargar/procesar nada,
@@ -84,7 +109,7 @@ for LOCALIDAD in "${!ROIS[@]}"; do
     # OOM-kill) la carpeta queda creada pero incompleta -- con el chequeo
     # viejo (solo "existe la carpeta") esa semana quedaba salteada para
     # siempre en todos los reintentos futuros, sin volver a procesarse.
-    if [ -f "$RESULTADO_FINAL" ]; then
+    if [ -f "$RESULTADO_FINAL" ] || [ -f "$RESULTADO_FINAL_VIEJO" ]; then
       echo "[$N/$TOTAL_RUNS] $LOCALIDAD $FECHA ... SALTEADO (ya existe)"
       SKIP=$((SKIP+1))
       continue
