@@ -70,6 +70,34 @@ una línea `PATH=` explícita que agrega Anaconda: sin ella, cron corre con
 un PATH mínimo que no lo incluye, y algunos pasos manuales que todavía se
 invocan fuera de Docker necesitan ese intérprete.
 
+### Pausar y reanudar
+
+Para pausar temporalmente las 3 corridas del miércoles (por ejemplo, para
+no gastar ancho de banda durante un evento, o mientras se depura algo) sin
+borrar el cron, comentar las 3 líneas con un prefijo `# PAUSADO <fecha>
+(<motivo>, restaurar sacando el "# "): ` antes de cada una:
+
+```bash
+crontab -l | awk '{
+  if ($0 ~ /^0 (6|9|12) \* \* 3 .*run_semanal\.sh/) {
+    print "# PAUSADO AAAA-MM-DD (motivo, restaurar sacando el \"# \"): " $0
+  } else {
+    print $0
+  }
+}' | crontab -
+```
+
+Para reanudar (quita el prefijo, sin importar la fecha/motivo que tenga):
+
+```bash
+crontab -l | sed -E 's/^# PAUSADO [^:]*: //' | crontab -
+```
+
+`crontab <archivo>` falla de forma confusa si el archivo está en un
+directorio "sandboxeado" (por ejemplo, un scratchpad de alguna
+herramienta) — mejor pasarlo siempre por un pipe directo a `crontab -`
+como arriba, no por un archivo intermedio en una ruta rara.
+
 ## Notificaciones (ntfy.sh)
 
 Al final de cada corrida real (no en el camino rápido de "ya estaba ok")
